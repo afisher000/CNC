@@ -1,6 +1,5 @@
 # %%
 import os
-import googlemaps
 from pprint import pprint
 import requests
 import numpy as np
@@ -8,8 +7,7 @@ import math
 import cv2 as cv
 
 ## TODO
-# Get map defined by latlong limits, not center and zoom
-# Apply styles
+# Figure how to remove watermark for tiling
 
 
 request_API = True
@@ -23,15 +21,21 @@ def estimate_zoom_value(frac, MAX_MAP_SIZE):
 def estimate_pixel_value(zoom, fraction):
     return int(2**zoom * GLOBE_SIZE * fraction)
 
-def estimate_map_size(sw, ne, MAX_MAP_SIZE=MAX_MAP_SIZE):
+def estimate_map_size(sw, ne, zoom=None, MAX_MAP_SIZE=MAX_MAP_SIZE):
+    def latRad(lat):
+        sin = np.sin(lat*np.pi/180)
+        rad = np.log((1+sin)/(1-sin))/2
+        return rad/2
+    
     # Compute fractions
-    lat_fraction = (ne['lat'] - sw['lat'])/180
+    lat_fraction = (latRad(ne['lat']) - latRad(sw['lat']))/np.pi
     lng_fraction = (ne['lng'] - sw['lng'])/360
 
     # Estimate zooms
-    lat_zoom = estimate_zoom_value(lat_fraction, MAX_MAP_SIZE)
-    lng_zoom = estimate_zoom_value(lng_fraction, MAX_MAP_SIZE)
-    zoom = min(lat_zoom, lng_zoom)
+    if zoom is None:
+        lat_zoom = estimate_zoom_value(lat_fraction, MAX_MAP_SIZE)
+        lng_zoom = estimate_zoom_value(lng_fraction, MAX_MAP_SIZE)
+        zoom = min(lat_zoom, lng_zoom)
 
     # Construct size string
     lat_px = estimate_pixel_value(zoom, lat_fraction)
@@ -51,12 +55,13 @@ def download_map(sw, ne, styles={}):
     params = {
         "center": center,
         "zoom": zoom,
-        "size": f'{lat_px}x{lng_px}',
+        "size": f'{lng_px}x{lat_px}',
         "maptype": "roadmap",
         "key": API_KEY,
         "style": styles
     }
     response = requests.get(url, params=params)
+    print(f'Reading at zoom {zoom}')
     with open('tile.png', 'wb') as f:
         f.write(response.content)
     return (lat_px, lng_px)
@@ -68,8 +73,6 @@ API_KEY = os.environ['MAPS_API_KEY']
 sw = {'lat':47.267153, 'lng':-120.4398904}
 ne = {'lat':47.297119, 'lng':-120.391744}
 
-# WHY ARE MY DIMENSIONS WRONG?
-
 styles = {
     "feature:all|element:all|visibility:off", #clear all
     "feature:poi.sports_complex|element:geometry|visibility:on|color:0xff0000" #turn on ski runs to red
@@ -79,18 +82,20 @@ styles = {
 # download_map(sw, ne, styles=styles)
 
 # Determine latlngs for tiling
-zoom, (lat_px, lng_px) = estimate_map_size(sw, ne, MAX_MAP_SIZE=1000)
+zoom, (lat_px, lng_px) = estimate_map_size(sw, ne, MAX_MAP_SIZE=1200)
+
 tile_shape = (lat_px//MAX_MAP_SIZE+1, lng_px//MAX_MAP_SIZE+1)
 lats = np.linspace(sw['lat'], ne['lat'], tile_shape[0]+1)
 lngs = np.linspace(sw['lng'], ne['lng'], tile_shape[1]+1)
 print(f'Tile shape = {tile_shape}')
+print(f'Overall size = {lat_px, lng_px}')
 
 # imgs = []
 # # Download images
 # for jlat in range(len(lats)-1):
 #     for jlng in range(len(lngs)-1):
-#         sw = {'lat':lats[jlat], 'lng':lngs[jlng]}
-#         ne = {'lat':lats[jlat+1], 'lng':lngs[jlng+1]}
+#         sw = {'lat':lats[-jlat-2], 'lng':lngs[jlng]}
+#         ne = {'lat':lats[-jlat-1], 'lng':lngs[jlng+1]}
 #         h,w = download_map(sw, ne, styles=styles)
 #         img = cv.imread('tile.png', cv.IMREAD_GRAYSCALE)
 
@@ -101,7 +106,7 @@ print(f'Tile shape = {tile_shape}')
 #         #
 #         tiled_img[h*jlat:h*(jlat+1), w*jlng:w*(jlng+1)] = img
 
-# cv.imwrite('test_tiling.jpg', tiled_img)
+cv.imwrite('test_tiling.jpg', tiled_img)
 
 
 
