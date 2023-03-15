@@ -22,6 +22,8 @@ def estimate_pixel_value(zoom, fraction):
     return int(2**zoom * GLOBE_SIZE * fraction)
 
 def estimate_map_size(sw, ne, zoom=None, MAX_MAP_SIZE=MAX_MAP_SIZE):
+    # Google maps uses mercantor projection which changes spacing between 
+    # lines of latitude. Extra math is needed to calculate latitude fraction.
     def latRad(lat):
         sin = np.sin(lat*np.pi/180)
         rad = np.log((1+sin)/(1-sin))/2
