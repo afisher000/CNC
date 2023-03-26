@@ -3,6 +3,96 @@ import numpy as np
 import utils_contours as uc
 from numpy.linalg import norm
 
+def convert_map_to_SVG(pngfile, svgfile, minArea=100, maxArea=1e5, troubleshooting=False):
+    gray = cv.imread(pngfile, cv.IMREAD_GRAYSCALE)
+    white = np.full_like(gray, 255, np.uint8)
+
+    # Find contours, remove small/large areas
+    all_contours, hierarchy = cv.findContours(gray, cv.RETR_TREE, cv.CHAIN_APPROX_SIMPLE)
+    areas = np.array([cv.contourArea(c) for c in all_contours])
+    contours = np.delete(
+        np.array(all_contours, dtype=object), 
+        np.where((areas<minArea)|(areas>maxArea))[0],
+        0
+    )
+    print(f'Reduced number of contours from {len(all_contours)} to {len(contours)}')
+
+    # Smooth each contour
+    smooth_contours = []
+    for j, contour in enumerate(contours):
+        # Get points along line, remove duplicates, and sort
+        points = get_points_on_line(white, contour)
+        points = remove_duplicate_points(points, min_dist=10)
+        points = sort_line_points(points, max_sep=60, angle_penalty_thresh=0.1)
+
+        # Downsample curve and save as new contour
+        points = smooth_curve(points, 2)
+        smooth_contour = build_contour_from_points(points, linewidth=2)
+        smooth_contours.append(smooth_contour)
+
+        if troubleshooting:
+            print(j)
+            white = np.full_like(gray, 255, np.uint8)  
+            cv.drawContours(white, [contour], -1, 0, -1)
+            uc.showImage(white)
+            white = np.full_like(gray, 255, np.uint8)  
+            white = cv.drawContours(white, [smooth_contour], -1, 0, -1)
+            uc.showImage(white)
+
+
+    print(f'Reduced total points from {sum(map(len, contours))} to {sum(map(len, smooth_contours))}')
+    uc.save2SVG(svgfile, smooth_contours, white.shape)
+    return
+
+def sort_line_points(points, max_sep=20, theta_buffer = 0.05, max_theta=120, dist_power=2):
+    # Start with first point, follow line in both directions
+    # Append or insert into js array based on direction
+    INF = 1e6
+    first_direction = True
+
+    # Start with 0th point, find nearest neighbor
+    js = [0]
+    dists = np.sum(np.square(points-points[0,:]), axis=1)
+    dists[js] = INF
+    next_j = np.argmin(dists)
+
+    # Append to js and begin iterations
+    js = [0, next_j]
+    prev_j, cur_j = 0, next_j
+
+    while True:
+        linedir = points[cur_j,:] - points[prev_j,:]
+        pointdirs = points - points[cur_j,:]
+        dists = norm(pointdirs, axis=1)
+        dists[js] = INF
+        costheta = np.dot(pointdirs, linedir)/norm(linedir)/dists
+
+        weighted_dists = (dists/max_sep)**dist_power * (1-costheta + theta_buffer)
+        
+        next_j = np.argmin(weighted_dists)
+        is_too_far = dists[next_j]>max_sep
+        is_backwards = costheta[next_j]<np.cos(max_theta*np.pi/180)
+        if (not is_too_far) and (not is_backwards):
+            if first_direction:
+                js.append(next_j)  
+            else:
+                js.insert(0, next_j)
+            prev_j, cur_j = cur_j, next_j
+        # If invalid, switch direction or break
+        else:
+            if is_too_far:
+                print('Too far')
+            else:
+                print('Is backwards')
+            if first_direction:
+                first_direction = False
+                prev_j, cur_j = js[1], js[0]
+            else:
+                break
+    return points[js,:]
+
+
+
 def update_point(contour, point, dx, dy):
     f0 = cv.pointPolygonTest(contour, point, True)
     fx = cv.pointPolygonTest(contour, point + dx, True)
@@ -18,10 +108,10 @@ def optimize_point(contour, point):
     for _ in range(5):
         next_point = update_point(contour, point, dx, dy)
         point = next_point
-        # if np.array_equal(point, next_point):
-        #     break
-        # else:
-        #     point = next_point
+        if np.array_equal(point, next_point):
+            break
+        else:
+            point = next_point
 
     return point
 
@@ -73,7 +163,7 @@ def order_centroids_by_neighbor(points, neighbors):
 def draw_points(img, points, save=False):
     img = img.copy()
     for point in points:
-        cv.circle(img, point, 4, 155, -1)
+        cv.circle(img, point, 20, 155, -1)
     uc.showImage(img)
     if save:
         cv.imwrite('test.jpg', img)
