@@ -12,39 +12,36 @@ WATERMARK_PIXELS = 60
 MAX_TILING_MAPS = 17
 API_KEY = os.environ['MAPS_API_KEY']
 
-def generate_elevation_jpg(sw, ne, file='elevationImage.png'):
+def get_elevation_data(sw, ne):
     NPOINTS=3601
-
+    
     # Check both gps coords are in same geographic tile. Generalize in next update.
     if int(sw['lat']//1)==int(ne['lat']//1) and int(sw['lng']//1)==int(ne['lng']//1):
         hgtLat, hgtLng = int(sw['lat']//1), int(sw['lng']//1)
     else:
         raise ValueError('GPS coords are on different geographic tiles. Will be allowed in next release')
-
+    
     # Create hgt_file string
     latCard = 'N' if hgtLat>=0 else 'S'
     lngCard = 'E' if hgtLng>=0 else 'W'
     hgt_path = os.path.join('HGT Files', f'{latCard}{abs(hgtLat)}{lngCard}{abs(hgtLng)}.hgt')
-
+    
     # Read the binary elevation data from the SRTM HGT file
     with open(hgt_path, 'rb') as f:
         data = f.read()
     elevation_data = np.frombuffer(data, dtype='>i2').reshape((NPOINTS, NPOINTS))
-
+    
     # Get elevations between sw, ne gps points
+    # Index counts down and right from top left corner
+    # min latitude is at idx=NPOINTS and max latitude is at idx=0
+    # min longitude is at idx=0 and max longitude is at idx=NPOINTS
     def getLatIdx(lat): return NPOINTS-int((lat%1)*NPOINTS)
     def getLngIdx(lng): return int((lng%1)*NPOINTS)
-
+    
     jlatmin, jlatmax = getLatIdx(ne['lat']), getLatIdx(sw['lat'])
     jlngmin, jlngmax = getLngIdx(sw['lng']), getLngIdx(ne['lng'])
     elevations = elevation_data[jlatmin:jlatmax, jlngmin:jlngmax]
-
-    # Save to grayscale image
-    img = np.uint8(elevations/elevations.max()*255)
-    cv.imwrite(file, img)
-    plt.imsave(file, img, cmap='gray')
-    print(f'Saved elevation image as {file}')
-    return
+    return elevations
 
 def estimate_zoom_value(frac, MAX_MAP_SIZE):
     return int(np.log(MAX_MAP_SIZE/GLOBE_SIZE/frac) / np.log(2))
@@ -88,7 +85,7 @@ def download_map(sw, ne, styles={}):
         "center": center,
         "zoom": zoom,
         "size": f'{lng_px}x{lat_px+2*WATERMARK_PIXELS}',
-        "maptype": "roadmap",
+        "maptype": "hybrid",
         "key": API_KEY,
         "style": styles
     }
@@ -101,9 +98,10 @@ def download_map(sw, ne, styles={}):
 def generate_tiled_map(sw, ne, file='tiled_map.jpg', max_map_size=1200):
     styles = {
         "feature:all|element:all|visibility:off", #clear all
+        "feature:poi.sports_complex|element:all|visibility:on",
         "feature:poi.sports_complex|element:geometry|visibility:on|color:0xffffff" #turn ski run white
     }
-
+    # styles = {}
     # Single download for testing
     # download_map(sw, ne, styles=styles)
 

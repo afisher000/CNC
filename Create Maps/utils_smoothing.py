@@ -3,47 +3,6 @@ import numpy as np
 import utils_contours as uc
 from numpy.linalg import norm
 
-def convert_map_to_SVG(pngfile, svgfile, minArea=100, maxArea=1e5, troubleshooting=False):
-    gray = cv.imread(pngfile, cv.IMREAD_GRAYSCALE)
-    white = np.full_like(gray, 255, np.uint8)
-
-    # Find contours, remove small/large areas
-    all_contours, hierarchy = cv.findContours(gray, cv.RETR_TREE, cv.CHAIN_APPROX_SIMPLE)
-    areas = np.array([cv.contourArea(c) for c in all_contours])
-    contours = np.delete(
-        np.array(all_contours, dtype=object), 
-        np.where((areas<minArea)|(areas>maxArea))[0],
-        0
-    )
-    print(f'Reduced number of contours from {len(all_contours)} to {len(contours)}')
-
-    # Smooth each contour
-    smooth_contours = []
-    for j, contour in enumerate(contours):
-        # Get points along line, remove duplicates, and sort
-        points = get_points_on_line(white, contour)
-        points = remove_duplicate_points(points, min_dist=10)
-        points = sort_line_points(points, max_sep=60, angle_penalty_thresh=0.1)
-
-        # Downsample curve and save as new contour
-        points = smooth_curve(points, 2)
-        smooth_contour = build_contour_from_points(points, linewidth=2)
-        smooth_contours.append(smooth_contour)
-
-        if troubleshooting:
-            print(j)
-            white = np.full_like(gray, 255, np.uint8)  
-            cv.drawContours(white, [contour], -1, 0, -1)
-            uc.showImage(white)
-            white = np.full_like(gray, 255, np.uint8)  
-            white = cv.drawContours(white, [smooth_contour], -1, 0, -1)
-            uc.showImage(white)
-
-
-    print(f'Reduced total points from {sum(map(len, contours))} to {sum(map(len, smooth_contours))}')
-    uc.save2SVG(svgfile, smooth_contours, white.shape)
-    return
-
 def sort_line_points(points, max_sep=20, theta_buffer = 0.05, max_theta=120, dist_power=2):
     # Start with first point, follow line in both directions
     # Append or insert into js array based on direction
@@ -82,8 +41,10 @@ def sort_line_points(points, max_sep=20, theta_buffer = 0.05, max_theta=120, dis
         else:
             if is_too_far:
                 print('Too far')
+                pass
             else:
                 print('Is backwards')
+                pass
             if first_direction:
                 first_direction = False
                 prev_j, cur_j = js[1], js[0]
