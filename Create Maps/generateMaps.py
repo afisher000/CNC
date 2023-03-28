@@ -19,7 +19,7 @@ plt.imsave(file, img, cmap='gray')
 print(f'Saved elevation image as {file}')
 
 # Generate map using tiled static map calls to Google API
-# um.generate_tiled_map(sw, ne, file='test.png', max_map_size=2400)
+um.generate_tiled_map(sw, ne, file='test.png', max_map_size=1200)
 
 
 

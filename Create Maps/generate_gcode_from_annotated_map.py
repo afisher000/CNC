@@ -84,7 +84,7 @@ for color, rgb in rgbs.items():
         gcode += f'G0 Z{zsafe}'
     
  # Save to file
-with open('test.txt', 'w') as f:
+with open('test gcode.txt', 'w') as f:
     f.write(gcode)
     
 
