@@ -140,7 +140,11 @@ def generate_tiled_map(sw, ne, file='tiled_map.jpg', max_map_size=1200):
         height, width = int(tiled_img.shape[0]*vert_scale), tiled_img.shape[1]
         print(height, width)
         resized_tiled_img = cv.resize(tiled_img, (width, height))
-        cv.imwrite(file, resized_tiled_img)
+        
+        # Save as color image to avoid issues detecting gray later
+        color_img = cv.cvtColor(resized_tiled_img, cv.COLOR_GRAY2BGR)
+        color_img[:,:,0] += 1
+        cv.imwrite(file, color_img)
         print(f'Saved tiled google map as {file}')
         os.remove('tile.png')
     return

@@ -40,10 +40,10 @@ def sort_line_points(points, max_sep=20, theta_buffer = 0.05, max_theta=120, dis
         # If invalid, switch direction or break
         else:
             if is_too_far:
-                print('Too far')
+                # print('Too far')
                 pass
             else:
-                print('Is backwards')
+                # print('Is backwards')
                 pass
             if first_direction:
                 first_direction = False

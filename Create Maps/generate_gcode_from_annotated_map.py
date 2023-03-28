@@ -48,7 +48,7 @@ rgbs = {
     'yellow':np.array([0, 242, 255])
 }
 
-map_file = 'test.png'
+map_file = 'colors.png'
 map_img = cv.imread(map_file)
 map_H, map_W = map_img.shape[:2]
 
@@ -58,15 +58,10 @@ map_H, map_W = map_img.shape[:2]
 for color, rgb in rgbs.items():
     mask = cv.inRange(map_img, rgb, rgb)
     contours, _ = cv.findContours(mask, cv.RETR_TREE, cv.CHAIN_APPROX_NONE)
-    print(color)
-    print(len(contours))
+    print(f'{len(contours)} contours for {color}')
     # uc.showImage(mask)
-    
     # For each contour, find MAP points along contour
-    minArea = 100
     for j, contour in enumerate(contours):
-        if cv.contourArea(contour)<minArea:
-            continue
         points = us.get_points_on_line(mask, contour)
         points = us.remove_duplicate_points(points, min_dist=5)
         points = us.sort_line_points(points, max_sep=80, dist_power=5, theta_buffer=0.1, max_theta = 150)
