@@ -12,7 +12,7 @@ import utils_smoothing as us
 import utils_maps as um
 from numpy.linalg import norm
 from scipy.interpolate import RegularGridInterpolator
-
+import matplotlib.pyplot as plt
 
 
 # Define ELEVATION coordinate data
@@ -95,7 +95,7 @@ for color, rgb in rgbs.items():
         
 def gcode_for_contour(contour):
     # Generate Gcode for contour
-    gcode = f'G0 X{model_xs[0]} Y{model_ys[0]}\n'
+    gcode = f'G0 X{contour[0][0]} Y{contour[0][1]}\n'
     for x,y,z in contour:
         gcode += f'G0 X{x} Y{y} Z{z}\n'
     gcode += f'G0 Z{zsafe}\n'   
@@ -110,7 +110,6 @@ idxs_to_cut = list(range(len(contours_to_cut)))
 del idxs_to_cut[0]
 contour = contours_to_cut[0]
 ordered_contours = [contour]
-gcode += gcode_for_contour(contour)
 current_point = contour[-1]
 
 # Iterate over remaining contours
@@ -129,27 +128,20 @@ while len(idxs_to_cut)>0:
 
 
 def dist_of_rapid_moves(contours):
-    dist = 0
+    dists = []
     for j in range(len(contours)-1):
-        dist += norm(np.array(contours[j+1][0])-np.array(contours[j][-1]))
-    return dist
+        dists.append(norm(np.array(contours[j+1][0])-np.array(contours[j][-1])))
+    return sum(dists), dists
 
 # Generate gcode
-def gcode_for_contour(contour):
-    # Generate Gcode for contour
-    gcode = f'G0 X{model_xs[0]} Y{model_ys[0]}\n'
-    for x,y,z in contour:
-        gcode += f'G0 X{x} Y{y} Z{z}\n'
-    gcode += f'G0 Z{zsafe}\n'   
-    return gcode
-
-
 for contour in ordered_contours:
     gcode += gcode_for_contour(contour)
 
 
+print(f'Unordered = {dist_of_rapid_moves(contours_to_cut)[0]}')
+print(f'Ordered = {dist_of_rapid_moves(ordered_contours)[0]}')
 #  # Save to file
-with open('missionridge.txt', 'w') as f:
+with open('testing for andrew.txt', 'w') as f:
     f.write(gcode)
     
 

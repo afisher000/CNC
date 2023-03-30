@@ -12,6 +12,25 @@ WATERMARK_PIXELS = 60
 MAX_TILING_MAPS = 17
 API_KEY = os.environ['MAPS_API_KEY']
 
+
+def snap_to_GPS_points(sw, ne):
+    NPOINTS = 3601
+    
+    def snap_to_point(val):
+        integer = val//1
+        decimal = int((val%1)*NPOINTS)/NPOINTS
+        return integer+decimal
+    new_sw = {
+        'lat':snap_to_point(sw.get('lat')),
+        'lng':snap_to_point(sw.get('lng'))
+    }
+    new_ne = {
+        'lat':snap_to_point(ne.get('lat')),
+        'lng':snap_to_point(ne.get('lng'))
+    }
+    return new_sw, new_ne
+
+
 def get_elevation_data(sw, ne):
     NPOINTS=3601
     
@@ -41,6 +60,7 @@ def get_elevation_data(sw, ne):
     jlatmin, jlatmax = getLatIdx(ne['lat']), getLatIdx(sw['lat'])
     jlngmin, jlngmax = getLngIdx(sw['lng']), getLngIdx(ne['lng'])
     elevations = elevation_data[jlatmin:jlatmax, jlngmin:jlngmax]
+    
     return elevations
 
 def estimate_zoom_value(frac, MAX_MAP_SIZE):
@@ -133,21 +153,20 @@ def generate_tiled_map(sw, ne, file='tiled_map.jpg', max_map_size=1200):
 
                 # Add tile to image
                 tiled_img[h*jlat:h*(jlat+1), w*jlng:w*(jlng+1)] = img[WATERMARK_PIXELS:-WATERMARK_PIXELS,:]
-
+        os.remove('tile.png')
+        
+        
         # Undo mercantor projection for compatibility with elevation map
         lat = sw['lat']/2+ne['lat']/2
         vert_scale = np.cos(lat*np.pi/180)
         height, width = int(tiled_img.shape[0]*vert_scale), tiled_img.shape[1]
-        print(height, width)
         resized_tiled_img = cv.resize(tiled_img, (width, height))
         
         # Save as color image to avoid issues detecting gray later
         color_img = cv.cvtColor(resized_tiled_img, cv.COLOR_GRAY2BGR)
         color_img[:,:,0] += 1
-        cv.imwrite(file, color_img)
-        print(f'Saved tiled google map as {file}')
-        os.remove('tile.png')
-    return
+        
+    return color_img
 
 
 
