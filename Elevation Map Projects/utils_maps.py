@@ -9,7 +9,7 @@ import matplotlib.pyplot as plt
 GLOBE_SIZE = 256
 MAX_MAP_SIZE = 640
 WATERMARK_PIXELS = 60
-MAX_TILING_MAPS = 17
+MAX_TILING_MAPS = 26
 API_KEY = os.environ['MAPS_API_KEY']
 
 
