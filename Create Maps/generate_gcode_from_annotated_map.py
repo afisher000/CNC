@@ -28,12 +28,14 @@ elev_interp = RegularGridInterpolator((range(elev_H), range(elev_W)), elevations
 model_W = 50
 model_H = 100
 model_T = 30
+IS_FLAT = True
     
 # Initialize gcode (use fusion example as template)
 # ORIGIN MUST BE IN TOP LEFT CORNER OF STOCK WITH Z AT 0
 # G17 -> select xy plane, G21 -> metric units, G90 -> absolute moves
 feed_rate = 2000
 zsafe = 5
+cut_depth = 1
 gcode = f'G90 G94\nG17\nG21\nG28 G91 Z0\nG90\nG54\nG0 Z{zsafe} F{feed_rate}\n'
 
 
@@ -48,20 +50,25 @@ rgbs = {
     'yellow':np.array([0, 242, 255])
 }
 
-map_file = 'colors.png'
+map_file = 'missionridge_runs_annotated.png'
 map_img = cv.imread(map_file)
 map_H, map_W = map_img.shape[:2]
 
 
-
+full_mask = np.zeros_like(map_img[:,:,0], dtype=np.uint8)
 # Analyze image
 for color, rgb in rgbs.items():
     mask = cv.inRange(map_img, rgb, rgb)
     contours, _ = cv.findContours(mask, cv.RETR_TREE, cv.CHAIN_APPROX_NONE)
     print(f'{len(contours)} contours for {color}')
-    # uc.showImage(mask)
+    
+    full_mask = cv.bitwise_or(full_mask, mask)
+    uc.showImage(mask)
     # For each contour, find MAP points along contour
+    minArea = 100
     for j, contour in enumerate(contours):
+        if cv.contourArea(contour)<minArea:
+            continue
         points = us.get_points_on_line(mask, contour)
         points = us.remove_duplicate_points(points, min_dist=5)
         points = us.sort_line_points(points, max_sep=80, dist_power=5, theta_buffer=0.1, max_theta = 150)
@@ -75,16 +82,21 @@ for color, rgb in rgbs.items():
         # Convert ELEVATION points to MODEL points
         model_xs = elev_xpixels / elev_W * model_W
         model_ys = -elev_ypixels / elev_H * model_H
-        model_zs = (elev_zpixels-max_elevation)/elevation_range*model_T
+        if IS_FLAT:
+            model_zs = -cut_depth*np.ones_like(elev_zpixels)
+        else:
+            model_zs = (elev_zpixels-max_elevation)/elevation_range*model_T
         
         # Generate Gcode for contour
         gcode += f'G0 X{model_xs[0]} Y{model_ys[0]}\n'
-        for x,y,z in zip(model_xs, model_ys, model_zs):
+        for x,y,z in zip(model_xs, model_ys, model_zs):e
             gcode += f'G0 X{x} Y{y} Z{z}\n'
-        gcode += f'G0 Z{zsafe}'
+        gcode += f'G0 Z{zsafe}\n'
     
  # Save to file
-with open('test gcode.txt', 'w') as f:
+with open('mission ridge runs.txt', 'w') as f:
     f.write(gcode)
-    
+uc.showImage(full_mask)
 
+
+# %%
