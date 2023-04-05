@@ -16,9 +16,24 @@ import matplotlib.pyplot as plt
 import os
 
 
+# INPUTS
+folder = 'missionridge'
+
 # Define ELEVATION coordinate data
 sw = {'lat':47.267153, 'lng':-120.4398904}
 ne = {'lat':47.297119, 'lng':-120.391744}
+
+# Define fusion MODEL coordinate data
+model_W = 227.741
+model_H = 140.352
+model_T = 34
+IS_FLAT = False
+
+# Define stroke and resolution
+DPI = 800
+stroke_mm = 0.5 #mm
+
+
 elevations = um.get_elevation_data(sw, ne)
 min_elevation, max_elevation = np.min(elevations), np.max(elevations)
 elevation_range = max_elevation- min_elevation
@@ -26,11 +41,7 @@ elev_H, elev_W = elevations.shape
 elev_interp = RegularGridInterpolator((range(elev_H), range(elev_W)), elevations)
 
 
-# Define fusion MODEL coordinate data
-model_W = 137.6 
-model_H = 84.8
-model_T = 20
-IS_FLAT = False
+
     
 # Initialize gcode (use fusion example as template)
 # ORIGIN MUST BE IN TOP LEFT CORNER OF STOCK WITH Z AT 0
@@ -61,25 +72,17 @@ def hex_to_bgr(hex_string):
     return bgr
 
 
-DPI = 800
-stroke_mm = 0.5 #mm
+# Compute stroke in pixels
 stroke_px = stroke_mm * (DPI/25.4)
 
-
-folder = 'missionridge'
+# Read contours
 map_file = os.path.join(folder, 'contours.png')
 map_img = cv.imread(map_file)
 map_H, map_W = map_img.shape[:2]
 
 
-
-
 full_mask = np.zeros_like(map_img[:, :, 0])
 contours_to_cut = []
-
-
-
-
 
 # Analyze image
 for hex_string in hex_strings:
