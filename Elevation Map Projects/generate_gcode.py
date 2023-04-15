@@ -17,15 +17,15 @@ import os
 
 
 # INPUTS
-folder = 'missionridge'
+folder = 'bigsky'
 
 # Define ELEVATION coordinate data
-sw = {'lat':47.267153, 'lng':-120.4398904}
-ne = {'lat':47.297119, 'lng':-120.391744}
+sw = {'lat':45.253139, 'lng':-111.477485}
+ne = {'lat':45.308380, 'lng':-111.358708}
 
 # Define fusion MODEL coordinate data
-model_W = 227.741
-model_H = 140.352
+model_W = 298.2
+model_H = 139.3
 model_T = 34
 IS_FLAT = False
 
@@ -173,3 +173,7 @@ with open(gcode_path, 'w') as f:
     f.write(gcode)
     
 
+
+# %%
+
+# %%
