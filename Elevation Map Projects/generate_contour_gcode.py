@@ -17,41 +17,50 @@ import os
 
 
 # INPUTS
-folder = 'bigsky'
+folder = 'mammoth'
 
 # Define ELEVATION coordinate data
-sw = {'lat':45.253139, 'lng':-111.477485}
-ne = {'lat':45.308380, 'lng':-111.358708}
+sw = {'lat':37.618210, 'lng':-119.060685}
+ne = {'lat':37.656038, 'lng':-119.0001}
+sw, ne = um.snap_to_GPS_points(sw, ne)
 
 # Define fusion MODEL coordinate data
-model_W = 298.2
-model_H = 139.3
+model_W = 238.7
+model_H = 148.5
 model_T = 34
 IS_FLAT = False
 
-# Define stroke and resolution
+# Define stroke and resolution of png
 DPI = 800
 stroke_mm = 0.5 #mm
 
 
-elevations = um.get_elevation_data(sw, ne)
-min_elevation, max_elevation = np.min(elevations), np.max(elevations)
-elevation_range = max_elevation- min_elevation
-elev_H, elev_W = elevations.shape
-elev_interp = RegularGridInterpolator((range(elev_H), range(elev_W)), elevations)
-
-
-
+def gcode_for_contour(contour, zsafe=5):
+    # Generate Gcode for contour
+    gcode = f'G1 X{contour[0][0]:.2f} Y{contour[0][1]:.2f}\n'
+    for x,y,z in contour:
+        gcode += f'G1 X{x:.2f} Y{y:.2f} Z{z:.2f}\n'
+    gcode += f'G1 Z{zsafe:.2f}\n'   
+    return gcode
     
-# Initialize gcode (use fusion example as template)
-# ORIGIN MUST BE IN TOP LEFT CORNER OF STOCK WITH Z AT 0
-# G17 -> select xy plane, G21 -> metric units, G90 -> absolute moves
-feed_rate = 2000
-zsafe = 5
-cut_depth = 1
-gcode = f'G90 G94\nG17\nG21\nG90\nG54\nG1 Z{zsafe} F{feed_rate}\n'
+def initialize_gcode(zsafe=5, feed_rate=2000):
+    # Initialize gcode (use fusion example as template)
+    # ORIGIN MUST BE IN TOP LEFT CORNER OF STOCK WITH Z AT 0
+    # G17 -> select xy plane, G21 -> metric units, G90 -> absolute moves
+    gcode = f'G90 G94\nG17\nG21\nG90\nG54\nG1 Z{zsafe} F{feed_rate}\n'
+    return gcode
 
+def dist_of_rapid_moves(contours):
+    dists = []
+    for j in range(len(contours)-1):
+        dists.append(norm(np.array(contours[j+1][0])-np.array(contours[j][-1])))
+    return sum(dists), dists
 
+def hex_to_bgr(hex_string):
+    ''' Convert a hexadecimal color string to an bgr array'''
+    hex_value = hex_string.lstrip('#')
+    bgr = np.array([int(hex_value[i:i+2], 16) for i in (4, 2, 0)])
+    return bgr
 
 # Basic colors
 hex_strings = [
@@ -64,12 +73,12 @@ hex_strings = [
 ]
 
 
-
-def hex_to_bgr(hex_string):
-    ''' Convert a hexadecimal color string to an bgr array'''
-    hex_value = hex_string.lstrip('#')
-    bgr = np.array([int(hex_value[i:i+2], 16) for i in (4, 2, 0)])
-    return bgr
+# Retrieve elevation data
+elevations = um.get_elevation_data(sw, ne)
+min_elevation, max_elevation = np.min(elevations), np.max(elevations)
+elevation_range = max_elevation - min_elevation
+elev_H, elev_W = elevations.shape
+elev_interp = RegularGridInterpolator((range(elev_H), range(elev_W)), elevations)
 
 
 # Compute stroke in pixels
@@ -79,7 +88,6 @@ stroke_px = stroke_mm * (DPI/25.4)
 map_file = os.path.join(folder, 'contours.png')
 map_img = cv.imread(map_file)
 map_H, map_W = map_img.shape[:2]
-
 
 full_mask = np.zeros_like(map_img[:, :, 0])
 contours_to_cut = []
@@ -112,6 +120,7 @@ for hex_string in hex_strings:
         model_xs = elev_xpixels / elev_W * model_W
         model_ys = -elev_ypixels / elev_H * model_H
         if IS_FLAT:
+            cut_depth = 1
             model_zs = -cut_depth * np.ones_like(elev_zpixels)
         else:
             model_zs = (elev_zpixels-max_elevation)/elevation_range*model_T
@@ -120,13 +129,7 @@ for hex_string in hex_strings:
         contours_to_cut.append(list(zip(model_xs, model_ys, model_zs)))
       
         
-def gcode_for_contour(contour):
-    # Generate Gcode for contour
-    gcode = f'G1 X{contour[0][0]} Y{contour[0][1]}\n'
-    for x,y,z in contour:
-        gcode += f'G1 X{x} Y{y} Z{z}\n'
-    gcode += f'G1 Z{zsafe}\n'   
-    return gcode
+
 
 start_points = np.array([contour[0] for contour in contours_to_cut])
 end_points = np.array([contour[-1] for contour in contours_to_cut])
@@ -154,13 +157,10 @@ while len(idxs_to_cut)>0:
     current_point = contour[-1]
 
 
-def dist_of_rapid_moves(contours):
-    dists = []
-    for j in range(len(contours)-1):
-        dists.append(norm(np.array(contours[j+1][0])-np.array(contours[j][-1])))
-    return sum(dists), dists
+
 
 # Generate gcode
+gcode = initialize_gcode()
 for contour in ordered_contours:
     gcode += gcode_for_contour(contour)
 
@@ -168,11 +168,51 @@ for contour in ordered_contours:
 print(f'Unordered = {dist_of_rapid_moves(contours_to_cut)[0]}')
 print(f'Ordered = {dist_of_rapid_moves(ordered_contours)[0]}')
 #  # Save to file
-gcode_path = os.path.join(folder, folder+'_gcode.txt')
+gcode_path = os.path.join(folder, folder+'_gcode_contours.txt')
 with open(gcode_path, 'w') as f:
     f.write(gcode)
-    
 
+    
+def generate_smoothing_gcode():
+
+    # Send to origin to start
+    gcode = initialize_gcode()
+    gcode += f'G1 X0 Y0'
+
+    # Compute points in raster scan
+    stepover = 0.4
+    model_ys = np.arange(0, -model_H, -stepover)
+    model_xs = np.arange(0, model_W, stepover)
+    [MODEL_XS, MODEL_YS] = np.meshgrid(model_xs, model_ys)
+
+    # Flip even rows of MODEL_XS so we cut on both directions
+    MODEL_XS[1::2,:] = np.flip( MODEL_XS[1::2,:], axis=1)
+
+
+    # Compute elevation pixels
+    ELEV_XPIXELS = MODEL_XS * (elev_W-1) / model_W
+    ELEV_YPIXELS = -MODEL_YS * (elev_H-1) / model_H
+    ELEV_ZPIXELS = elev_interp((ELEV_YPIXELS, ELEV_XPIXELS))
+
+    # Compute model heights
+    MODEL_ZS = (ELEV_ZPIXELS - max_elevation)/elevation_range*model_T
+
+    # Append model points to gcode
+    for x, y, z in zip(MODEL_XS.ravel(), MODEL_YS.ravel(), MODEL_ZS.ravel()):
+        gcode += f'G1 X{x:.2f} Y{y:.2f} Z{z:.2f}\n'
+
+
+    # Lift to 15mm, then head to origin
+    gcode += f'G1 Z15'
+    gcode += f'G1 X0 Y0'
+
+
+    #  Save gcode
+    gcode_path = os.path.join(folder, folder+'_gcode_smoothing.txt')
+    with open(gcode_path, 'w') as f:
+        f.write(gcode)
+    
+generate_smoothing_gcode()
 
 # %%
 

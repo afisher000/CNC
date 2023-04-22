@@ -1,0 +1,94 @@
+# -*- coding: utf-8 -*-
+"""
+Created on Mon Mar 27 08:39:18 2023
+
+@author: afisher
+"""
+# %%
+import cv2 as cv
+import numpy as np
+import utils_contours as uc
+import utils_smoothing as us
+import utils_maps as um
+from numpy.linalg import norm
+from scipy.interpolate import RegularGridInterpolator
+import matplotlib.pyplot as plt
+import os
+
+
+################ INPUTS ##############################
+folder = 'bigsky'
+
+# Define ELEVATION coordinate data
+sw = {'lat':45.253139, 'lng':-111.477485}
+ne = {'lat':45.308380, 'lng':-111.358708}
+
+# Define fusion MODEL coordinate data
+model_W = 298.2
+model_H = 139.3
+model_T = 34
+IS_FLAT = False
+
+# Define stroke and resolution
+DPI = 800
+stroke_mm = 0.5 #mm
+
+
+elevations = um.get_elevation_data(sw, ne)
+min_elevation, max_elevation = np.min(elevations), np.max(elevations)
+elevation_range = max_elevation- min_elevation
+elev_H, elev_W = elevations.shape
+elev_interp = RegularGridInterpolator((range(elev_H), range(elev_W)), elevations)
+
+################################################
+    
+# Initialize gcode (use fusion example as template)
+# ORIGIN MUST BE IN TOP LEFT CORNER OF STOCK WITH Z AT 0
+# G17 -> select xy plane, G21 -> metric units, G90 -> absolute moves
+feed_rate = 2000
+zsafe = 5
+stepover = 0.4
+
+# Gcode header
+gcode = f'G90 G94\nG17\nG21\nG90\nG54\nG1 Z{zsafe} F{feed_rate}\n'
+
+# Send to origin to start
+gcode = f'G1 X0 Y0'
+
+# Compute points in raster scan
+model_ys = np.arange(0, -model_H, -stepover)
+model_xs = np.arange(0, model_W, stepover)
+
+
+
+for model_y in model_ys:
+    elev_ypixel = model_y * -elev_H / model_H
+
+    model_xs = np.arange(0, model_W, stepover)
+    for model_x in model_xs:
+        # Get elevation pixels and interpolate
+        elev_xpixel = model_x * elev_W / model_W
+
+        elev_zpixel = elev_interp((elev_ypixel, elev_xpixel))
+
+        # Convert to model height
+        model_z = (elev_zpixel-max_elevation)/elevation_range*model_T
+
+        # Append to gcode
+        gcode += f'G1 X{model_x} Y{model_y} Z{model_z}\n'
+
+# Lift to 15mm, then head to origin
+gcode = f'G1 Z15'
+gcode = f'G1 X0 Y0'
+
+
+#  Save gcode
+gcode_path = os.path.join(folder, folder+'_gcode_smoothing.txt')
+with open(gcode_path, 'w') as f:
+    f.write(gcode)
+    
+
+
+# %%
+
+# %%
