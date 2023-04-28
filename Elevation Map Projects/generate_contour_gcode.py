@@ -15,9 +15,10 @@ from scipy.interpolate import RegularGridInterpolator
 import matplotlib.pyplot as plt
 import os
 
+# Need to add interpolation for better resolution. 
 
 # INPUTS
-folder = 'mammoth'
+folder = 'simple_mammoth'
 
 # Define ELEVATION coordinate data
 sw = {'lat':37.618210, 'lng':-119.060685}
@@ -25,9 +26,9 @@ ne = {'lat':37.656038, 'lng':-119.0001}
 sw, ne = um.snap_to_GPS_points(sw, ne)
 
 # Define fusion MODEL coordinate data
-model_W = 238.7
-model_H = 148.5
-model_T = 34
+model_W = 151.9
+model_H = 94.5
+model_T = 30
 IS_FLAT = False
 
 # Define stroke and resolution of png
@@ -36,6 +37,7 @@ stroke_mm = 0.5 #mm
 
 
 def gcode_for_contour(contour, zsafe=5):
+    print(f'Contour Leng = {len(contour)}')
     # Generate Gcode for contour
     gcode = f'G1 X{contour[0][0]:.2f} Y{contour[0][1]:.2f}\n'
     for x,y,z in contour:
@@ -44,7 +46,7 @@ def gcode_for_contour(contour, zsafe=5):
     return gcode
     
 def initialize_gcode(zsafe=5, feed_rate=2000):
-    # Initialize gcode (use fusion example as template)
+    # Initialize gcode (used fusion example as template)
     # ORIGIN MUST BE IN TOP LEFT CORNER OF STOCK WITH Z AT 0
     # G17 -> select xy plane, G21 -> metric units, G90 -> absolute moves
     gcode = f'G90 G94\nG17\nG21\nG90\nG54\nG1 Z{zsafe} F{feed_rate}\n'
@@ -112,13 +114,13 @@ for hex_string in hex_strings:
         
         # Convert MAP points to ELEVATION points
         map_xpixels, map_ypixels = zip(*points)
-        elev_xpixels = np.array(map_xpixels) / map_W * elev_W
-        elev_ypixels = np.array(map_ypixels) / map_H * elev_H
-        elev_zpixels = elev_interp((elev_ypixels, elev_xpixels))
+        elev_xpixels = np.array(map_xpixels) / (map_W-1) * (elev_W-1)
+        elev_ypixels = np.array(map_ypixels) / (map_H-1) * (elev_H-1)
+        elev_zpixels = elev_interp((elev_ypixels, elev_xpixels)) # Don't like this termed pixels... Its not, its exact
         
         # Convert ELEVATION points to MODEL points
-        model_xs = elev_xpixels / elev_W * model_W
-        model_ys = -elev_ypixels / elev_H * model_H
+        model_xs = elev_xpixels / (elev_W-1) * model_W
+        model_ys = -elev_ypixels / (elev_H-1) * model_H
         if IS_FLAT:
             cut_depth = 1
             model_zs = -cut_depth * np.ones_like(elev_zpixels)
