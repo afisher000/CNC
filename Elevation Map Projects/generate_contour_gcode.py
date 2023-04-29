@@ -175,14 +175,7 @@ with open(gcode_path, 'w') as f:
     f.write(gcode)
 
     
-def generate_smoothing_gcode():
-
-    # Send to origin to start
-    gcode = initialize_gcode()
-    gcode += f'G1 X0 Y0'
-
-    # Compute points in raster scan
-    stepover = 0.4
+def get_raster_points(stepover):
     model_ys = np.arange(0, -model_H, -stepover)
     model_xs = np.arange(0, model_W, stepover)
     [MODEL_XS, MODEL_YS] = np.meshgrid(model_xs, model_ys)
@@ -198,6 +191,20 @@ def generate_smoothing_gcode():
 
     # Compute model heights
     MODEL_ZS = (ELEV_ZPIXELS - max_elevation)/elevation_range*model_T
+    return MODEL_XS, MODEL_YS, MODEL_ZS
+
+
+
+def generate_smoothing_gcode():
+
+    # Send to origin to start
+    gcode = initialize_gcode()
+    gcode += f'G1 X0 Y0\n'
+
+    # Compute points in raster scan
+    stepover = 0.4
+    MODEL_XS, MODEL_YS, MODEL_ZS = get_raster_points(stepover)
+
 
     # Append model points to gcode
     for x, y, z in zip(MODEL_XS.ravel(), MODEL_YS.ravel(), MODEL_ZS.ravel()):
@@ -205,8 +212,8 @@ def generate_smoothing_gcode():
 
 
     # Lift to 15mm, then head to origin
-    gcode += f'G1 Z15'
-    gcode += f'G1 X0 Y0'
+    gcode += f'G1 Z15\n'
+    gcode += f'G1 X0 Y0\n'
 
 
     #  Save gcode
@@ -216,6 +223,89 @@ def generate_smoothing_gcode():
     
 generate_smoothing_gcode()
 
+
+def compute_2d_rolling_maximum(arr, reach, safety_factor=1):
+    arr_padded = np.pad(arr, reach, constant_values = arr.min())
+
+    # Find maximum of elements in each row
+    b = arr_padded
+    for row in range(arr_padded.shape[0]):
+        for _ in range(reach):
+            b[row,:] = np.maximum(np.roll(arr_padded[row,:], 1), b[row,:])
+            b[row,:] = np.maximum(np.roll(arr_padded[row,:], -1), b[row,:])
+
+    # Find maximum of elements in each column
+    c = arr_padded
+    for col in range(arr_padded.shape[1]):
+        for _ in range(reach):
+            c[:,col] = np.maximum(np.roll(arr_padded[:,col], 1), c[:,col])
+            c[:,col] = np.maximum(np.roll(arr_padded[:,col], -1), c[:,col])
+
+    # Convert back to MODEL_ZS
+    safety_factor = 1
+    return np.maximum(b, c)[reach:-reach, reach:-reach] + safety_factor
+
+
+
+
+
+def generate_roughing_gcode():
+    # Send to origin to start
+    gcode = initialize_gcode()
+    gcode += f'G1 X0 Y0\n'
+
+    # Compute points in raster scan (higher resolution than needed to apply maximums with accuracy)
+    stepover = 5
+    res_factor = 4
+    grid_res = stepover/res_factor
+    MODEL_XS, MODEL_YS, MODEL_ZS = get_raster_points(grid_res)
+
+    # Apply maximum moving height to MODEL_ZS
+    tool_radius = 0.25*25.4  * (1/2)
+    reach = int(np.ceil(tool_radius/grid_res))
+    MODEL_ZS = compute_2d_rolling_maximum(MODEL_ZS, reach)
+
+    # Downsample to correct stepover
+    MODEL_XS = MODEL_XS[::res_factor, ::res_factor]
+    MODEL_YS = MODEL_YS[::res_factor, ::res_factor]
+    MODEL_ZS = MODEL_ZS[::res_factor, ::res_factor]
+    
+    # Flip even rows of MODEL so we cut on both directions
+    MODEL_XS[1::2,:] = np.flip( MODEL_XS[1::2,:], axis=1)
+    MODEL_ZS[1::2,:] = np.flip( MODEL_ZS[1::2,:], axis=1)
+
+
+    # Lift to 15mm, then head to origin
+    gcode += f'G1 Z15\n'
+    gcode += f'G1 X0 Y0\n'
+
+    roughing_stepdown = 4
+    xstart = -10
+    n_stepdowns = int(np.ceil(model_T / roughing_stepdown))
+    for j in range(n_stepdowns):
+        # Compute ZS for current stepdown
+        stepdown_ZS = MODEL_ZS * (j+1)/n_stepdowns 
+
+        # Move to off stock, then move to starting height
+        gcode += f'G1 X{xstart} Y0\n'
+        gcode += f'G1 Z{stepdown_ZS[0,0]}\n'
+        
+        # Append model points to gcode
+        for x, y, z in zip(MODEL_XS.ravel(), MODEL_YS.ravel(), stepdown_ZS.ravel()):
+            gcode += f'G1 X{x:.2f} Y{y:.2f} Z{z:.2f}\n'
+
+        # Lift to 15mm, then head to origin
+        gcode += f'G1 Z15\n'
+        gcode += f'G1 X0 Y0\n'
+
+    #  Save gcode
+    gcode_path = os.path.join(folder, folder+'_gcode_roughing.txt')
+    with open(gcode_path, 'w') as f:
+        f.write(gcode)
+
+
+
+generate_roughing_gcode()
 # %%
 
 # %%
