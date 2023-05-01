@@ -5,71 +5,100 @@ import requests
 import numpy as np
 import cv2 as cv
 import matplotlib.pyplot as plt
-
-GLOBE_SIZE = 256
-MAX_MAP_SIZE = 640
-WATERMARK_PIXELS = 60
-MAX_TILING_MAPS = 26
-API_KEY = os.environ['MAPS_API_KEY']
+import pandas as pd
+from scipy.interpolate import RegularGridInterpolator
 
 
-def snap_to_GPS_points(sw, ne):
+def get_GPS_coords(folder):
+    '''Reads GPS coords from file. Snaps to nearest latlng data points in data
+    folders.'''
     NPOINTS = 3601
     
-    def snap_to_point(val):
-        integer = val//1
-        decimal = int((val%1)*NPOINTS)/NPOINTS
-        return integer+decimal
-    new_sw = {
-        'lat':snap_to_point(sw.get('lat')),
-        'lng':snap_to_point(sw.get('lng'))
-    }
-    new_ne = {
-        'lat':snap_to_point(ne.get('lat')),
-        'lng':snap_to_point(ne.get('lng'))
-    }
-    return new_sw, new_ne
+    # Read data, round to nearest arcsecond (1/3600 of degree)
+    GPS_df = pd.read_csv('GPS coordinates.csv', index_col=0)
+    GPS_coords = GPS_df.loc[folder].apply(lambda x: (x//1) + int((x%1)*NPOINTS)/NPOINTS)
+    
+    # Write to sw and ne dictionaries
+    sw, ne = {}, {}
+    sw['lat'], sw['lng'], ne['lat'], ne['lng'] = GPS_coords
+    return sw, ne
+
+
+def zinterpolation(xpoints, ypoints, MODEL, elevations):
+    # Define interpolation
+    elev_H, elev_W = elevations.shape
+    elev_interp = RegularGridInterpolator((range(elev_H), range(elev_W)), elevations)
+    
+    # Convert points to elevation_indices
+    xindices = xpoints / MODEL['W'] * (elev_W-1)
+    yindices = -ypoints / MODEL['H'] * (elev_H-1)
+    elevation_values = elev_interp((yindices, xindices))
+
+    
+    # Evaluate interpolation and convert to mm
+    zpoints = (elevation_values - elevations.max()) / np.ptp(elevations) * MODEL['T']
+    return zpoints
 
 
 def get_elevation_data(sw, ne):
-    NPOINTS=3601
-    
-    # Check both gps coords are in same geographic tile. Generalize in next update.
-    if int(sw['lat']//1)==int(ne['lat']//1) and int(sw['lng']//1)==int(ne['lng']//1):
-        hgtLat, hgtLng = int(sw['lat']//1), int(sw['lng']//1)
-    else:
-        raise ValueError('GPS coords are on different geographic tiles. Will be allowed in next release')
-    
-    # Create hgt_file string
-    latCard = 'N' if hgtLat>=0 else 'S'
-    lngCard = 'E' if hgtLng>=0 else 'W'
-    hgt_path = os.path.join('HGT Files', f'{latCard}{abs(hgtLat)}{lngCard}{abs(hgtLng)}.hgt')
-    
-    # Read the binary elevation data from the SRTM HGT file
-    with open(hgt_path, 'rb') as f:
-        data = f.read()
-    elevation_data = np.frombuffer(data, dtype='>i2').reshape((NPOINTS, NPOINTS))
-    
-    # Get elevations between sw, ne gps points
     # Index counts down and right from top left corner
     # min latitude is at idx=NPOINTS and max latitude is at idx=0
     # min longitude is at idx=0 and max longitude is at idx=NPOINTS
-    def getLatIdx(lat): return NPOINTS-int((lat%1)*NPOINTS)
-    def getLngIdx(lng): return int((lng%1)*NPOINTS)
     
-    jlatmin, jlatmax = getLatIdx(ne['lat']), getLatIdx(sw['lat'])
-    jlngmin, jlngmax = getLngIdx(sw['lng']), getLngIdx(ne['lng'])
-    elevations = elevation_data[jlatmin:jlatmax, jlngmin:jlngmax]
+    NPOINTS = 3601
+    hgt_folder = 'HGT Files'
     
+    # Round to lower integers
+    hgtLats = range(int(sw['lat']//1), int(ne['lat']//1)+1)
+    hgtLngs = range(int(sw['lng']//1), int(ne['lng']//1)+1)
+    
+    # Initialize elevation_data according to number of tiles
+    all_elevations = np.zeros((
+        (NPOINTS-1)*len(hgtLats)+1, 
+        (NPOINTS-1)*len(hgtLngs)+1
+    ))
+    
+    # Loop over hgt tiles
+    for jLat, hgtLat in enumerate(hgtLats):
+        for jLng, hgtLng in enumerate(hgtLngs):
+    
+            # Create hgt_file string
+            latCard = 'N' if hgtLat>=0 else 'S'
+            lngCard = 'E' if hgtLng>=0 else 'W'
+            hgt_file = f'{latCard}{abs(hgtLat)}{lngCard}{abs(hgtLng)}.hgt'
+            
+            # Download data if path exists
+            hgt_path = os.path.join(hgt_folder, hgt_file)
+            if os.path.exists(hgt_path):
+                
+                # Read the binary elevation data from the SRTM HGT file
+                with open(hgt_path, 'rb') as f:
+                    data = f.read()
+                    tile_data = np.frombuffer(data, dtype='>i2').reshape((NPOINTS, NPOINTS))
+                    
+                # Add to full matrix
+                idxLat = all_elevations.shape[0] - ((NPOINTS-1)*(jLat+1)+1)
+                idxLng = (NPOINTS-1)*jLng
+                all_elevations[idxLat:idxLat+NPOINTS, idxLng:idxLng+NPOINTS] = tile_data
+            else:
+                raise FileNotFoundError(f'File {hgt_file} was not found.')
+                
+                    
+    # Return elevations between GPS coords
+    elevations = all_elevations[
+        (NPOINTS-int((ne['lat']%1)*NPOINTS)):-int((sw['lat']%1)*NPOINTS),
+        int((sw['lng']%1)*NPOINTS):-(NPOINTS-int((ne['lng']%1)*NPOINTS))
+        ]
     return elevations
 
-def estimate_zoom_value(frac, MAX_MAP_SIZE):
-    return int(np.log(MAX_MAP_SIZE/GLOBE_SIZE/frac) / np.log(2))
 
-def estimate_pixel_value(zoom, fraction):
-    return int(2**zoom * GLOBE_SIZE * fraction)
+def estimate_map_size(sw, ne, MAX_SIZE=None, zoom=None):
+    ''' For a given GPS region, either a zoom or MAX_SIZE must be specified. 
+    If zoom is not specified, it is calculated such that the map is as large as
+    possible without exceeding MAX_SIZE. The actual map dimensions can then
+    be computed from the zoom.'''
+    GLOBE_SIZE = 256 #size of globe google map at zoom 0
 
-def estimate_map_size(sw, ne, max_map_size=MAX_MAP_SIZE):
     # Google maps uses mercantor projection which changes spacing between 
     # lines of latitude. Extra math is needed to calculate latitude fraction.
     def latRad(lat):
@@ -77,97 +106,52 @@ def estimate_map_size(sw, ne, max_map_size=MAX_MAP_SIZE):
         rad = np.log((1+sin)/(1-sin))/2
         return rad/2
     
-    # Compute fractions
+    # Compute fractions relative to global range (180deg for latitude, 360deg for longitude)
     lat_fraction = (latRad(ne['lat']) - latRad(sw['lat']))/np.pi
     lng_fraction = (ne['lng'] - sw['lng'])/360
 
-    # Estimate zooms
-    lat_zoom = estimate_zoom_value(lat_fraction, max_map_size)
-    lng_zoom = estimate_zoom_value(lng_fraction, max_map_size)
-    zoom = min(lat_zoom, lng_zoom)
+    if zoom is None:
+        # Solve 2^(zoom) = SIZE / (frac*GLOBE_SIZE) for zoom
+        lat_zoom = np.log(MAX_SIZE/GLOBE_SIZE/lat_fraction) / np.log(2)
+        lng_zoom = np.log(MAX_SIZE/GLOBE_SIZE/lng_fraction) / np.log(2)
+        zoom = int(min(lat_zoom, lng_zoom)) #round to integer minimal zoom
 
-    # Construct size string
-    lat_px = estimate_pixel_value(zoom, lat_fraction)
-    lng_px = estimate_pixel_value(zoom, lng_fraction)
+    # Solve 2^(zoom) = SIZE / (frac*GLOBE_SIZE) for SIZE
+    map_height = int(2**zoom * GLOBE_SIZE * lat_fraction)
+    map_width = int(2**zoom * GLOBE_SIZE * lng_fraction)
 
-    return zoom, (lat_px, lng_px)
+    return zoom, (map_height, map_width)
 
 
-def download_map(sw, ne, styles={}):
+def download_tile(sw, ne, zoom, WATERMARK_PIXELS):
+    API_KEY = os.environ['MAPS_API_KEY']
+    
+    # Determine size of map to download. Then add extra WATERMARK_PIXELS.
+    _, (tile_height, tile_width) = estimate_map_size(sw, ne, zoom=zoom)
+    size_string = f'{tile_width}x{tile_height+2*WATERMARK_PIXELS}'
+    
     # Generate API call for a static map
     url = "https://maps.googleapis.com/maps/api/staticmap"
-    zoom, (lat_px, lng_px) = estimate_map_size(sw, ne)
+    
     lat_center = sw['lat']/2 + ne['lat']/2
     lng_center = sw['lng']/2 + ne['lng']/2
-    center = f'{lat_center},{lng_center}'
+    center_string = f'{lat_center},{lng_center}'
 
     params = {
-        "center": center,
+        "center": center_string,
         "zoom": zoom,
-        "size": f'{lng_px}x{lat_px+2*WATERMARK_PIXELS}',
+        "size": size_string,
         "maptype": "hybrid",
         "key": API_KEY,
-        "style": styles
+        "style": {}
     }
+
+    # Save map to file
     response = requests.get(url, params=params)
-    # print(f'Reading at zoom {zoom}')
     with open('tile.png', 'wb') as f:
         f.write(response.content)
-    return (lat_px, lng_px)
-
-def generate_tiled_map(sw, ne, file='tiled_map.jpg', max_map_size=1200):
-    styles = {
-        "feature:all|element:all|visibility:off", #clear all
-        "feature:poi.sports_complex|element:all|visibility:on",
-        "feature:poi.sports_complex|element:geometry|visibility:on|color:0xffffff" #turn ski run white
-    }
-    # styles = {}
-    # Single download for testing
-    # download_map(sw, ne, styles=styles)
-
-    # Determine latlngs for tiling
-    zoom, (lat_px, lng_px) = estimate_map_size(sw, ne, max_map_size=max_map_size)
-
-    tile_shape = (lat_px//(MAX_MAP_SIZE-2*WATERMARK_PIXELS)+1, lng_px//MAX_MAP_SIZE+1)
-    lats = np.linspace(sw['lat'], ne['lat'], tile_shape[0]+1)
-    lngs = np.linspace(sw['lng'], ne['lng'], tile_shape[1]+1)
-    # print(f'Tile shape = {tile_shape}')
-    # print(f'Overall size = {lat_px, lng_px}')
-
-    if np.prod(tile_shape)>MAX_TILING_MAPS:
-        raise ValueError(f'Number of maps for tiling ({np.prod(tile_shape)}) exceeds MAX_TILING_MAPS ({MAX_TILING_MAPS})')
-
-    else:
-        # Download images
-        for jlat in range(len(lats)-1):
-            for jlng in range(len(lngs)-1):
-                # Compute tile latlngs and get download map
-                sw = {'lat':lats[-jlat-2], 'lng':lngs[jlng]}
-                ne = {'lat':lats[-jlat-1], 'lng':lngs[jlng+1]}
-                h,w = download_map(sw, ne, styles=styles)
-                img = cv.imread('tile.png', cv.IMREAD_GRAYSCALE)
-
-                # Initialize image
-                if jlat==0 and jlng==0:
-                    tiled_img = np.zeros((tile_shape[0]*h, tile_shape[1]*w), dtype=np.uint8)
-
-                # Add tile to image
-                tiled_img[h*jlat:h*(jlat+1), w*jlng:w*(jlng+1)] = img[WATERMARK_PIXELS:-WATERMARK_PIXELS,:]
-        os.remove('tile.png')
         
-        
-        # Undo mercantor projection for compatibility with elevation map
-        lat = sw['lat']/2+ne['lat']/2
-        vert_scale = np.cos(lat*np.pi/180)
-        height, width = int(tiled_img.shape[0]*vert_scale), tiled_img.shape[1]
-        resized_tiled_img = cv.resize(tiled_img, (width, height))
-        
-        # Save as color image to avoid issues detecting gray later
-        color_img = cv.cvtColor(resized_tiled_img, cv.COLOR_GRAY2BGR)
-        color_img[:,:,0] += 1
-        
-    return color_img
-
+    return (tile_height, tile_width)
 
 
 # %%

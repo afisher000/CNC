@@ -1,74 +1,148 @@
-import cv2 as cv
+# -*- coding: utf-8 -*-
+"""
+Created on Sun Apr 30 18:33:53 2023
+
+@author: afisher
+"""
+
+# %%
+import xml.etree.ElementTree as ET
+import os
 import numpy as np
-from scipy.interpolate import splprep, splev
 
-def smoothContoursPolyDP(contours, error = .01):
-    smoothed_contours = []
-    for contour in contours:
-        epsilon = error * cv.arcLength(contour, True)
-        approx = cv.approxPolyDP(contour, epsilon, True)
-        smoothed_contours.append(approx)
-    return smoothed_contours
 
-def smoothContoursInterpolate(contours, s=1.0, dist=10):
-    smoothed = []
-    for c in contours:
-        x,y = c.T
-        # Convert to python lists
-        x = x.tolist()[0]
-        y = y.tolist()[0] 
+def get_contours(folder, MODEL):
+    svg_path = os.path.join('Projects', folder, 'contours.svg')
+    
+    # Get paths in svg file
+    tree = ET.parse(svg_path)
+    root = tree.getroot()
+    paths = root.findall('.//{http://www.w3.org/2000/svg}path')  
+    
+    height = float(root.get('height').strip('mm'))
+    
+    # Handler
+    def m_command(j, commands):
+        return j+1, commands[j]
+    def l_command(j, commands):
+        return j+1, commands[j]
+    def c_command(j, commands):
+        return j+3, commands[j+2]
+    def v_command(j, commands):
+        return j+1, commands[j]
+    def h_command(j, commands):
+        return j+1, commands[j]
+    
+    command_handler = {
+        'm':m_command,
+        'l':l_command,
+        'c':c_command,
+        'v':v_command,
+        'h':h_command
+    }
+    
+    contours = []
+    for path in paths:
+        d = path.get('d')
+        commands = d.split()   
+    
+        # Initialize
+        cur_command = None
+        curx = 0
+        cury = 0
+        contour = []
+        j = 0
+        while j<len(commands):
+            command = commands[j]
+            if command.lower() in command_handler.keys():
+                cur_command = command
+                j, pointstr = command_handler[command.lower()](j+1, commands)
+            else:
+                j, pointstr = command_handler[cur_command.lower()](j, commands)
+            
+            # Lowercase is relative movement, uppercase is absolute
+            try:
+                x,y = map(float, pointstr.split(','))
+            except:
+                if cur_command.lower()=='v':
+                    x = 0
+                    y = float(pointstr)
+                elif cur_command.lower()=='h':
+                    x = float(pointstr)
+                    y = 0
+                else:
+                    raise ValueError(pointstr)
+            if cur_command.islower():
+                curx += x
+                cury += y
+            else:
+                curx = x
+                cury = y
+                    
+            contour.append((curx,cury))
+            
+        # Save to contours, ensure same dimensions as MODEL
+        contours.append(np.array(contour) * MODEL['H']/height)
+        
+        ordered_contours = optimize_contour_order(contours)
+    return ordered_contours
 
-        tck, u = splprep([x,y], u=None, k=1, s=s, per=1)
-        u_new = np.linspace(u.min(), u.max(), 4+int(cv.arcLength(c,True)/dist))
-        x_new, y_new = splev(u_new, tck, der=0)
-        res_array = [[[int(i[0]), int(i[1])]] for i in zip(x_new, y_new)]
-        smoothed.append(np.asarray(res_array, dtype=np.int32))
-    return smoothed
+def optimize_contour_order(contours):
+    # Order contours to reduce travel time
+    start_points = np.array([contour[0] for contour in contours])
+    end_points = np.array([contour[-1] for contour in contours])
+    
+    # Start with first contour
+    idxs = list(range(len(contours))) # keeps track of which idxs still need cut
+    del idxs[0]
+    contour = contours[0]
+    ordered_contours = [contour] # keeps track of the ordered contours
+    current_point = contour[-1]
+    
+    # Iterate over remaining contours
+    while len(idxs)>0:
+        # Find shortest path to next contour (either end)
+        start_dists = np.linalg.norm(start_points[idxs] - current_point, axis=1)
+        end_dists = np.linalg.norm(end_points[idxs] - current_point, axis=1)  
+        
+        if min(start_dists)<min(end_dists):
+            idx = np.argmin(start_dists)
+            contour = contours[idxs[idx]]
+        else:
+            idx = np.argmin(end_dists)
+            contour = contours[idxs[idx]][::-1]
+            
+        # Remove from list of idxs and append. Update current point
+        del idxs[idx]
+        ordered_contours.append(contour)
+        current_point = contour[-1]
+    return ordered_contours
 
-def morphKernel(pixels):
-    return 255*np.ones((pixels, pixels), np.uint8)
-
-def filterContours(contours, minArea = 50, maxArea=1e5):
-    filtered_contours = []
-    for c in contours:
-        area = cv.contourArea(c)
-        if area>minArea and area<maxArea:
-            filtered_contours.append(c)
-
-    return filtered_contours
-
-def printContourSize(label, contours):
-    totalSize = sum([len(c) for c in contours])
-    print(f'Total Size for {label} = {totalSize}')
-    return
-
-def save2SVG(filename, contours, imgShape):
-    h, w = imgShape
-
-    with open(filename, "w+") as f:
-        f.write(f'<svg width="{w}" height="{h}" xmlns="http://www.w3.org/2000/svg">')
-
-        for c in contours:
-            # Start drawing polygon
-            f.write('<path d="M')
-            for i in range(len(c)):
-                x, y = c[i][0]
-                f.write(f"{x} {y} ")
-            # Complete polygon to initial point
-            x, y = c[0][0]
-            f.write(f"{x} {y} ")
-            # End polygon
-            f.write('" style="stroke:pink"/>')
-        f.write("</svg>")
-
-def showImage(img, max_size=1000):
-    cv.imshow('test', resizeImg(img))
-    cv.waitKey(0)
-    cv.destroyAllWindows()   
-
-def resizeImg(img, max_size=1000):
-    resizedImg = img.copy()
-    while resizedImg.shape[0]>max_size:
-        resizedImg = cv.pyrDown(resizedImg)
-
-    return resizedImg
+def add_points_along_path(path, max_distance):
+    # Calculate the distances between successive points in the path
+    distances = np.sqrt(np.sum(np.diff(path, axis=0) ** 2, axis=1))
+    
+    # Calculate the number of points to add between each pair of successive points
+    num_points_to_add = np.ceil(distances / max_distance).astype(int)
+    
+    # Initialize a list to hold the new points
+    new_path = [path[0]]
+    
+    # Loop over the pairs of successive points in the original path
+    for i in range(len(path) - 1):
+        # Get the start and end points of the current segment
+        start_point = path[i]
+        end_point = path[i + 1]
+        
+        # Get the number of points to add between the start and end points
+        num_points = num_points_to_add[i]
+        
+        # Use linear interpolation to add new points between the start and end points
+        x_interp = np.interp(np.linspace(0, 1, num_points + 1), [0, 1], [start_point[0], end_point[0]])
+        y_interp = np.interp(np.linspace(0, 1, num_points + 1), [0, 1], [start_point[1], end_point[1]])
+        
+        # Append the new points to the list of points
+        new_path += list(zip(x_interp[1:], y_interp[1:]))
+    
+    # Return the new list of points
+    return np.array(new_path)
