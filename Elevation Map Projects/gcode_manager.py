@@ -28,7 +28,7 @@ class gcode_manager():
         print(f'Saved "{file}"')
         
         
-    def append_gcode_for_path(self, xpoints, ypoints, zpoints, roughing=False):
+    def append_gcode_for_path(self, xpoints, ypoints, zpoints, roughing=False, lift=True):
         # Go to xy starting point
         self.gcode += f'G1 X{xpoints[0]:.2f} Y{ypoints[0]:.2f}\n'
         
@@ -43,7 +43,8 @@ class gcode_manager():
         self.gcode += ''.join(lines)
             
         # List to safe height
-        self.gcode += f'G1 Z{self.zsafe:.2f}\n'   
+        if lift:
+            self.gcode += f'G1 Z{self.zsafe:.2f}\n'   
         return
     
     

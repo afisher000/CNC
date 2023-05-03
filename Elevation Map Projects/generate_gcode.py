@@ -4,6 +4,7 @@ Created on Sun Apr 30 20:14:17 2023
 
 @author: afisher
 """
+# %%
 import cv2 as cv
 import numpy as np
 import utils_contours as uc
@@ -37,18 +38,33 @@ gm = gcode_manager(folder, MODEL, elevations)
 
 # %% Contours
 max_distance = .5
+safe_height = 5
 contours = uc.get_contours(folder, MODEL)
 
 gm.initialize_gcode()
 # For each contour, increase number of points and then interpolate z values
-for contour in contours:
-    new_path = uc.add_points_along_path(contour, max_distance)
+for j in range(len(contours)):
+    path = contours[j]
+
+    # Get jth path
+    new_path = uc.add_points_along_path(path, max_distance)
     xpoints = new_path[:,0]
     ypoints = -1*new_path[:,1]
     zpoints = um.zinterpolation(xpoints, ypoints, MODEL, elevations)
     
     # Add gcode for path
-    gm.append_gcode_for_path(xpoints, ypoints, zpoints)
+    gm.append_gcode_for_path(xpoints, ypoints, zpoints, lift=False)
+
+    # Add transition between jth and j+1st
+    if j<(len(contours)-1):
+        transition = np.vstack([contours[j][-1], contours[j+1][0]])
+        new_path = uc.add_points_along_path(transition, max_distance)
+        xpoints = new_path[:,0]
+        ypoints = -1*new_path[:,1]
+        zpoints = um.zinterpolation(xpoints, ypoints, MODEL, elevations)
+
+        # Add gcode for path with safety Z
+        gm.append_gcode_for_path(xpoints, ypoints, zpoints+safe_height, lift=False)
 
 gm.save_gcode('contours.txt')
 

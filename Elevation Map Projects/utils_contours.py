@@ -9,8 +9,8 @@ Created on Sun Apr 30 18:33:53 2023
 import xml.etree.ElementTree as ET
 import os
 import numpy as np
-
-
+import utils_maps as um
+# %%
 def get_contours(folder, MODEL):
     svg_path = os.path.join('Projects', folder, 'contours.svg')
     
@@ -83,9 +83,10 @@ def get_contours(folder, MODEL):
             
         # Save to contours, ensure same dimensions as MODEL
         contours.append(np.array(contour) * MODEL['H']/height)
-        
+
         ordered_contours = optimize_contour_order(contours)
     return ordered_contours
+
 
 def optimize_contour_order(contours):
     # Order contours to reduce travel time
@@ -112,6 +113,7 @@ def optimize_contour_order(contours):
             idx = np.argmin(end_dists)
             contour = contours[idxs[idx]][::-1]
             
+        
         # Remove from list of idxs and append. Update current point
         del idxs[idx]
         ordered_contours.append(contour)
