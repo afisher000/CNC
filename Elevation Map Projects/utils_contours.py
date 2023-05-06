@@ -9,9 +9,8 @@ Created on Sun Apr 30 18:33:53 2023
 import xml.etree.ElementTree as ET
 import os
 import numpy as np
-import utils_maps as um
 # %%
-def get_contours(folder, MODEL):
+def get_svg_paths(folder, MODEL):
     svg_path = os.path.join('Projects', folder, 'contours.svg')
     
     # Get paths in svg file

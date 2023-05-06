@@ -17,8 +17,8 @@ import os
 
 
 folder = 'simple_mammoth'
-sw, ne = um.get_GPS_coords(folder)
-elevations = um.get_elevation_data(sw, ne)
+# sw, ne = um.get_GPS_coords(folder)
+# elevations = um.get_elevation_data(sw, ne)
 
 # =============================================================================
 # # Todo 
@@ -26,72 +26,77 @@ elevations = um.get_elevation_data(sw, ne)
 # =============================================================================
 
 # Specify model dimensions
-MODEL = {}
-MODEL['H'] = 150                                                               # CNC y axis
-MODEL['T'] = 50                                                                 # CNC z axis
-MODEL['W'] = MODEL['H'] / (ne['lat']-sw['lat'])* (ne['lng']-sw['lng'])          # CNC x axis
+model = {}
+model['H'] = 150                                                               # CNC y axis
+model['T'] = 50                                                                 # CNC z axis
 
 # Define gcode_manager
-gm = gcode_manager(folder, MODEL, elevations)
+gm = gcode_manager(folder, model)
 
 
 
 # %% Contours
-max_distance = .5
-safe_height = 5
-contours = uc.get_contours(folder, MODEL)
+# Define parameters
+max_distance = .5                   # Max distance between points on contour
+transition_height = 5               # Height above stock when making transition
 
+# Get paths from contours.svg
+paths = uc.get_svg_paths(folder, model)
+
+# Loop over paths 
 gm.initialize_gcode()
-# For each contour, increase number of points and then interpolate z values
-for j in range(len(contours)):
-    path = contours[j]
+for j in range(len(paths)):
+    path = paths[j]
 
-    # Get jth path
+    # Add points to satisfy max_distance, unpack x and y. Switch sign on y for different coordinate system.
     new_path = uc.add_points_along_path(path, max_distance)
     xpoints = new_path[:,0]
     ypoints = -1*new_path[:,1]
-    zpoints = um.zinterpolation(xpoints, ypoints, MODEL, elevations)
     
-    # Add gcode for path
-    gm.append_gcode_for_path(xpoints, ypoints, zpoints, lift=False)
+    # Append gcode for path
+    gm.append_gcode_for_path(xpoints, ypoints, lift=False, zdepth=-1, is_contour=True)
 
-    # Add transition between jth and j+1st
-    if j<(len(contours)-1):
-        transition = np.vstack([contours[j][-1], contours[j+1][0]])
+    # Add transition between end of current path and beginning of next path
+    if j<(len(paths)-1):
+        transition = np.vstack([paths[j][-1], paths[j+1][0]])
         new_path = uc.add_points_along_path(transition, max_distance)
         xpoints = new_path[:,0]
         ypoints = -1*new_path[:,1]
-        zpoints = um.zinterpolation(xpoints, ypoints, MODEL, elevations)
 
-        # Add gcode for path with safety Z
-        gm.append_gcode_for_path(xpoints, ypoints, zpoints+safe_height, lift=False)
+        # Add gcode for transition, bit will be at transition_height.
+        gm.append_gcode_for_path(xpoints, ypoints, lift=False, zdepth = transition_height)
 
-gm.save_gcode('contours.txt')
+gm.save_gcode('paths.txt')
 
 # %% Smoothing
+# Inputs
 stepover = 0.4
 
+
+
 gm.initialize_gcode()
+
+# Get raster points
 xpoints, ypoints, zpoints = gm.get_raster_points(stepover)
-gm.append_gcode_for_path(xpoints, ypoints, zpoints)
+
+# Specify zpoints 
+gm.append_gcode_for_path(xpoints, ypoints, zpoints=zpoints)
 gm.save_gcode('smoothing.txt')
 
 
 
 # %% Roughing stepdown
-# Compute points in raster scan (higher resolution than needed to apply maximums with accuracy)
 tool_diameter = 0.5 * 25.4
 stepover_frac = 0.8
-
-max_stepdown = 4
-n_stepdowns = int(np.ceil(MODEL['T'] / max_stepdown))
+max_stepdown = 4 #in mm
 
 # Get raster points
 stepover = tool_diameter*stepover_frac
 xpoints, ypoints, zpoints = gm.get_raster_points(stepover, roughing=True)
 
-# Generate gcode for stepdowns
+# Generate gcode for each stepdown height
 gm.initialize_gcode()
+n_stepdowns = int(np.ceil(model['T'] / max_stepdown))
 for j in range(n_stepdowns):
     gm.append_gcode_for_path(xpoints, ypoints, zpoints*(j+1)/n_stepdowns , roughing=True)
 
