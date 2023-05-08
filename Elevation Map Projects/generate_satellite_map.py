@@ -62,15 +62,9 @@ vert_scale = np.cos( center_lat *np.pi/180)
 new_shape = full_img.shape[1], int(full_img.shape[0]*vert_scale)
 resized_img = cv.resize(full_img, new_shape)
 
-# Contour detection relies on matching contour colors in image.
-# Save as color image with shifted "blue" values so black contours can be identified.
-color_img = cv.cvtColor(resized_img, cv.COLOR_GRAY2BGR)
-color_img[:,:,0] += 1
-
-
 # # Save image to file
 map_path = os.path.join('Projects', folder, 'satellite.png')
-cv.imwrite(map_path, color_img)
+cv.imwrite(map_path, resized_img)
 
 
 
