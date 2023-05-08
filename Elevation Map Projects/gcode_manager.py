@@ -20,6 +20,7 @@ class gcode_manager():
         self.parse_elevation_data()
 
         self.gcode = ''
+        self.time = 0
         self.zsafe = 5
         self.feed_rate = 2000
         self.xsafe = -20
@@ -96,7 +97,7 @@ class gcode_manager():
             self.add_path_to_gcode(xpoints, ypoints, zpoints*(j+1)/n_stepdowns, start_safe=True)
             
             # Finish raster at safe height
-            self.lift_to_zsafe()
+            self.lift()
         self.save_gcode(file)
         return
         
@@ -109,12 +110,12 @@ class gcode_manager():
         
         # Correct zpoints with gradient information
         radius = tool_diameter/2
-        zpoints += radius*gradients**2/np.sqrt(1+gradients**2)
+        zpoints += radius*gradients/np.sqrt(1+gradients**2)
         
         # Generate gcode for smoothing
         self.initialize_gcode()
         self.add_path_to_gcode(xpoints, ypoints, zpoints)
-        self.lift_to_zsafe()
+        self.lift()
         self.save_gcode(file)
         return
         
@@ -146,13 +147,94 @@ class gcode_manager():
                 # Add gcode for transition, bit will be at transition_height.
                 self.add_path_to_gcode(xpoints, ypoints, zpoints+transition_height)
         
-        self.lift_to_zsafe()
+        self.lift()
+        self.save_gcode(file)
+        return
+    
+    def generate_name_gcode(self, file, vsize, hpad, vpad, position,
+            transition_height=5, vflip=False, hflip=False):
+        pass
+        
+        return
+    def generate_logo_gcode(self, file,
+            transition_height=5):
+        
+        # Read paths and boundaries from fusion logo
+        paths = self.parse_fusion_logo_gcode()
+        
+        # Loop over paths
+        self.initialize_gcode()
+        for path in paths:
+            
+            # Get xypoints and depth from fusion path
+            xpoints, ypoints, zdepth = zip(*path)
+            
+            # Get elevation interpolation, update with zdepth
+            zpoints, gradients = self.interpolate_points(xpoints, ypoints)
+            zpoints += np.array(zdepth)
+            
+            # Add path to gcode, lift for transition
+            self.add_path_to_gcode(xpoints, ypoints, zpoints)
+            self.lift(zpoints[-1]+transition_height)
+        
+        # Lift to safety and save gcode
+        self.lift()
         self.save_gcode(file)
         return
         
+    
+    def parse_fusion_logo_gcode(self, file='logo_fusion.nc'):
+        with open(file, 'r') as f:
+            lines = f.readlines()
+        
+        xmin, ymin = 1e6, 0
+        xmax, ymax = 0, -1e6
+        
+        # Initialize position
+        position = {'X':0, 'Y':0, 'Z':5}
+        
+        # Create list for holding paths
+        paths, path = [], []
+        
+        # Separate line into commands
+        for line in lines:
+            is_new_position = False
+            commands = line.strip('\n').split(' ')
+            for command in commands:
+                # Skip blank lines or comments starting with "("
+                if len(command)==0 or command[0]=='(':
+                    # print(f'Command = "{command}" skipped')
+                    break #Break out of commands loop
+                    
+                # If X,Y, or Z command, update position
+                elif command[0] in position.keys():
+                    position[command[0]] = float(command[1:])
+                    is_new_position = True
+        
+            # If z is cutting at a new position, add to path and update bounds
+            if position['Z']<0 and is_new_position:
+                path.append([position['X'], position['Y'], position['Z']])
+                print(position)
+                xmin = position['X'] if position['X']<xmin else xmin
+                xmax = position['X'] if position['X']>xmax else xmax
+                ymin = position['Y'] if position['Y']<ymin else ymin
+                ymax = position['Y'] if position['Y']>ymax else ymax
+                
+            # If z is not cutting, add to paths (if nonempty) and reset path
+            elif position['Z']>0:
+                if len(path)>2:
+                    paths.append(path)
+                path = []
+        return paths, xmin, xmax, ymin, ymax
+    
+
+        
+        
+        
+        
         
     def add_points_to_path(self, path, max_distance):
-        # Unpack path
+        # Unpack path (change yhat direction from png)
         xpoints = path[:,0]
         ypoints = -1*path[:,1]
         
@@ -188,10 +270,17 @@ class gcode_manager():
         lines = [f'G1 X{x:.2f} Y{y:.2f} Z{z:.2f}\n' for x,y,z in
                  zip(xpoints, ypoints, zpoints)]
         self.gcode += ''.join(lines)
+        
+        # Add time for path
+        distances = np.sqrt(np.diff(xpoints)**2+np.diff(ypoints)**2+np.diff(zpoints)**2)
+        self.time += distances.sum()/self.feed_rate
         return
 
-    def lift_to_zsafe(self):    
-        self.gcode += f'G1 Z{self.zsafe:.2f}\n' 
+    def lift(self, z=None):
+        if z is None:
+            self.gcode += f'G1 Z{self.zsafe:.2f}\n' 
+        else:
+            self.gcode += f'G1 Z{z:.2f}\n' 
         return
     
     def get_roughing_heights(self, xpoints, ypoints, tool_diameter):
@@ -217,12 +306,18 @@ class gcode_manager():
         # Initialize gcode (used fusion example as template)
         # G17 -> select xy plane, G21 -> metric units, G90 -> absolute moves
         self.gcode = f'G90 G94\nG17\nG21\nG90\nG54\nG1 Z{self.zsafe} F{self.feed_rate}\n'
+        self.time = 0
     
     def save_gcode(self, file):
-        path = os.path.join('Projects', self.folder, file)
-        with open(path, 'w') as f:
+        gcode_folder = os.path.join('Projects', self.folder, 'Gcode')
+        if not os.path.exists(gcode_folder):
+            os.makedirs(gcode_folder)
+            
+        file_path = os.path.join(gcode_folder, file)
+        with open(file_path, 'w') as f:
             f.write(self.gcode)
-        print(f'Saved "{file}"')
+        print(f'Saved "{file}", estimate time = {self.time:.1f} min')
+        return
     
     def get_raster_points(self, stepover):
         unique_y = np.arange(0, -self.model['H'], -stepover)
