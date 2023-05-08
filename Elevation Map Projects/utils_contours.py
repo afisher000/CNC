@@ -88,6 +88,7 @@ def get_svg_paths(folder, MODEL):
 
 
 def optimize_contour_order(contours):
+    ## CAN THIS BE IMPROVED??
     # Order contours to reduce travel time
     start_points = np.array([contour[0] for contour in contours])
     end_points = np.array([contour[-1] for contour in contours])
@@ -118,32 +119,3 @@ def optimize_contour_order(contours):
         ordered_contours.append(contour)
         current_point = contour[-1]
     return ordered_contours
-
-def add_points_along_path(path, max_distance):
-    # Calculate the distances between successive points in the path
-    distances = np.sqrt(np.sum(np.diff(path, axis=0) ** 2, axis=1))
-    
-    # Calculate the number of points to add between each pair of successive points
-    num_points_to_add = np.ceil(distances / max_distance).astype(int)
-    
-    # Initialize a list to hold the new points
-    new_path = [path[0]]
-    
-    # Loop over the pairs of successive points in the original path
-    for i in range(len(path) - 1):
-        # Get the start and end points of the current segment
-        start_point = path[i]
-        end_point = path[i + 1]
-        
-        # Get the number of points to add between the start and end points
-        num_points = num_points_to_add[i]
-        
-        # Use linear interpolation to add new points between the start and end points
-        x_interp = np.interp(np.linspace(0, 1, num_points + 1), [0, 1], [start_point[0], end_point[0]])
-        y_interp = np.interp(np.linspace(0, 1, num_points + 1), [0, 1], [start_point[1], end_point[1]])
-        
-        # Append the new points to the list of points
-        new_path += list(zip(x_interp[1:], y_interp[1:]))
-    
-    # Return the new list of points
-    return np.array(new_path)

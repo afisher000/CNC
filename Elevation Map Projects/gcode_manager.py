@@ -7,8 +7,10 @@ Created on Sun Apr 30 18:14:53 2023
 import os
 import numpy as np
 import utils_maps as um
+import utils_contours as uc
 from scipy.interpolate import RegularGridInterpolator
 from scipy.ndimage import gaussian_filter
+
 
 
 class gcode_manager():
@@ -21,12 +23,17 @@ class gcode_manager():
         self.zsafe = 5
         self.feed_rate = 2000
         self.xsafe = -20
-        self.roughing_factor = 4        
+        self.roughing_grid_points = 5      
         return
     
     def parse_elevation_data(self):
         # Read elevations from file
         sw, ne = um.get_GPS_coords(self.folder)
+        
+        # Define width of model
+        self.model['W'] = self.model['H'] / (ne['lat']-sw['lat'])* (ne['lng']-sw['lng']) 
+        print('---- MODEL DIMENSIONS ----')
+        print(f"X = {self.model['W']:.1f}mm, Y = {self.model['H']:.1f}mm, Z = {self.model['T']:.1f}mm")
         
         # Determine elevation and gradients
         self.elevations = um.get_elevation_data(sw, ne)
@@ -38,135 +45,204 @@ class gcode_manager():
         elev_H, elev_W = self.elevations.shape
         elevft_to_mm = self.model['T'] / np.ptp(self.elevations)
         elevpx_to_mm = self.model['H'] / (elev_H-1)
-
-        self.elevft_to_mm = elevft_to_mm
-        self.elevpx_to_mm = elevpx_to_mm
-        self.z_heights = self.elevations * elevft_to_mm
+        self.z_heights = (self.elevations-self.elevations.max()) * elevft_to_mm
 
         # Smooth gradients over a couple datapoints to avoid noise
         self.gradients = gaussian_filter(self.elevation_gradients * elevft_to_mm / elevpx_to_mm, 2)
 
+        # Define interpolations to map x,y [mm] to z [mm] or gradient [mm/mm]
+        ygrid_points = -1*np.array(range(elev_H)) * self.model['H'] / (elev_H-1)
+        xgrid_points = np.array(range(elev_W)) * self.model['W'] / (elev_W-1)
 
+        # Have to use np.flip so grid vectors are increasing
+        self.z_interp = RegularGridInterpolator((np.flip(ygrid_points), xgrid_points), np.flip(self.z_heights, axis=0))
+        self.gradient_interp = RegularGridInterpolator((np.flip(ygrid_points), xgrid_points), np.flip(self.gradients, axis=0))
+        
 
-        self.z_interp = RegularGridInterpolator((range(elev_H), range(elev_W)), self.elevations)
-        self.gradient_interp = RegularGridInterpolator((range(elev_H), range(elev_W)), self.gradients)
-
-        # Define width of model
-        self.model['W'] = self.model['H'] / (ne['lat']-sw['lat'])* (ne['lng']-sw['lng']) 
-        print('---- MODEL DIMENSIONS ----')
-        print(f"X = {self.model['W']:.1f}mm, Y = {self.model['H']:.1f}mm, Z = {self.model['T']:.1f}mm")
         return
 
 
-    def interpolate_elevation(self, xpoints, ypoints):
-        # Convert points to elevation_indices
-        elev_H, elev_W = self.elevations.shape
-        xindices = xpoints / self.model['W'] * (elev_W-1)
-        yindices = -ypoints / self.model['H'] * (elev_H-1)
+    def interpolate_points(self, xpoints, ypoints):
+        # Clip avoid model boundaries
+        eps = 1e-6
+        clipped_xpoints = np.clip(xpoints, eps, self.model['W']-eps)
+        clipped_ypoints = np.clip(ypoints, -self.model['H']+eps, eps)
+
 
         # Apply interpolations
-        zpoints = self.z_interp((yindices, xindices))
-        gradients = self.gradient_interp((yindices, xindices))
+        zpoints = self.z_interp((clipped_ypoints, clipped_xpoints))
+        gradients = self.gradient_interp((clipped_ypoints, clipped_xpoints))
 
         return zpoints, gradients
 
-    def save_gcode(self, file):
-        path = os.path.join('Projects', self.folder, file)
-        with open(path, 'w') as f:
-            f.write(self.gcode)
-        print(f'Saved "{file}"')
-        
-        
-    def append_gcode_for_path(self, xpoints, ypoints, zpoints=None, roughing=False, lift=True, zdepth=0, is_contour=False, is_smoothing=False, tool_radius=2):
-        # Compute zpoints if none_supplied
-        if zpoints is None:
-            zpoints, gradients = self.interpolate_elevation(xpoints, ypoints)
 
-        # If contour, increase depth where gradient is nonzero
-        if is_contour:
+    def generate_roughing_gcode(self, file, 
+            tool_diameter=0.25*25.4, stepover_frac=0.8, max_stepdown=None):
+        
+        # Compute stepover and number of stepdowns
+        stepover = tool_diameter*stepover_frac
+        if max_stepdown is None:
+            n_stepdowns = 1
+        else:
+            n_stepdowns = int(np.ceil(self.model['T'] / max_stepdown))
+            
+        # Compute points in raster scan
+        xpoints, ypoints = self.get_raster_points(stepover)
+        zpoints = self.get_roughing_heights(xpoints, ypoints, tool_diameter)
+        
+        # Loop over raster scans to generate gcode
+        self.initialize_gcode()
+        for j in range(n_stepdowns):
+            self.add_path_to_gcode(xpoints, ypoints, zpoints*(j+1)/n_stepdowns, start_safe=True)
+            
+            # Finish raster at safe height
+            self.lift_to_zsafe()
+        self.save_gcode(file)
+        return
+        
+    def generate_smoothing_gcode(self, file,
+            tool_diameter=4, stepover=1):
+        
+        # Compute points and gradients
+        xpoints, ypoints = self.get_raster_points(stepover)
+        zpoints, gradients = self.interpolate_points(xpoints, ypoints)
+        
+        # Correct zpoints with gradient information
+        radius = tool_diameter/2
+        zpoints += radius*gradients**2/np.sqrt(1+gradients**2)
+        
+        # Generate gcode for smoothing
+        self.initialize_gcode()
+        self.add_path_to_gcode(xpoints, ypoints, zpoints)
+        self.lift_to_zsafe()
+        self.save_gcode(file)
+        return
+        
+    def generate_runs_gcode(self, file,
+            max_distance=0.5, transition_height=5, zdepth=-1):
+        
+        paths = uc.get_svg_paths(self.folder, self.model)
+        
+        
+        # Loop over paths
+        self.initialize_gcode()
+        for j in range(len(paths)):
+            path = paths[j]
+            
+            # Add points to contours to satisfy max_distance
+            xpoints, ypoints = self.add_points_to_path(path, max_distance)
+            zpoints, gradients = self.interpolate_points(xpoints, ypoints)
+            
+            # Correct zpoints with gradient information and append to gcode
             zpoints += zdepth*np.sqrt(1+gradients**2)
-
-        # If smoothing, increase height of tool so that every part of tool radius stays above surface
-        if is_smoothing:
-            zpoints += zdepth + tool_radius*gradients**2/np.sqrt(1+gradients**2)
-
-
-
-        # Go to xy starting point
-        self.gcode += f'G1 X{xpoints[0]:.2f} Y{ypoints[0]:.2f}\n'
+            self.add_path_to_gcode(xpoints, ypoints, zpoints)
         
-        # If roughing, start off stock at safe xposition, and move to correct z depth
-        if roughing:
+            # Add transition between end of current path and beginning of next path
+            if j<(len(paths)-1):
+                transition = np.vstack([paths[j][-1], paths[j+1][0]])
+                xpoints, ypoints = self.add_points_to_path(transition, max_distance)
+                zpoints, gradients = self.interpolate_points(xpoints, ypoints)
+                
+                # Add gcode for transition, bit will be at transition_height.
+                self.add_path_to_gcode(xpoints, ypoints, zpoints+transition_height)
+        
+        self.lift_to_zsafe()
+        self.save_gcode(file)
+        return
+        
+        
+    def add_points_to_path(self, path, max_distance):
+        # Unpack path
+        xpoints = path[:,0]
+        ypoints = -1*path[:,1]
+        
+        # Calculate distances between successive points
+        xdistances = np.diff(xpoints)
+        ydistances = np.diff(ypoints)
+        distances = np.sqrt(xdistances**2+ydistances**2)
+        
+        # Calculate points per move (minimum of 2)
+        points_per_move = np.ceil(distances/max_distance+1).astype(int)
+        
+        # Define containers for new points
+        new_xpoints = []
+        new_ypoints = []
+        
+        # Loop over moves in path, extend with new discretized paths
+        for j in range(len(distances)):
+            new_xpoints.extend( np.linspace(xpoints[j], xpoints[j+1], points_per_move[j]) )
+            new_ypoints.extend( np.linspace(ypoints[j], ypoints[j+1], points_per_move[j]) )
+
+        return np.array(new_xpoints), np.array(new_ypoints)
+        
+        
+    def add_path_to_gcode(self, xpoints, ypoints, zpoints, start_safe=False):
+        # Go to starting points
+        if start_safe:
             self.gcode += f'G1 X{self.xsafe:.2f} Y0\n'
             self.gcode += f'G1 Z{zpoints[0]:.2f}\n'
+        else:
+            self.gcode += f'G1 X{xpoints[0]:.2f} Y{ypoints[0]:.2f}\n'
         
         # Move along points in path
         lines = [f'G1 X{x:.2f} Y{y:.2f} Z{z:.2f}\n' for x,y,z in
                  zip(xpoints, ypoints, zpoints)]
         self.gcode += ''.join(lines)
-            
-        # List to safe height
-        if lift:
-            self.gcode += f'G1 Z{self.zsafe:.2f}\n'   
+        return
+
+    def lift_to_zsafe(self):    
+        self.gcode += f'G1 Z{self.zsafe:.2f}\n' 
         return
     
-    
+    def get_roughing_heights(self, xpoints, ypoints, tool_diameter):
+        # Initialize an array of zpoints
+        zpoints_max = np.full_like(xpoints, fill_value=-self.model['T'])
+        
+        # Loop over offsets within tool radius
+        xy_offset = np.linspace(-tool_diameter/2, tool_diameter/2, self.roughing_grid_points)
+        for dx in xy_offset:
+            for dy in xy_offset:
+                # Clip to keep within model boundaries
+                clipped_xpoints = np.clip(xpoints+dx, 0, self.model['W'])
+                clipped_ypoints = np.clip(ypoints+dy, -self.model['H'], 0)
+                
+                # Update max zpoints
+                zpoints, _ = self.interpolate_points(clipped_xpoints,clipped_ypoints)
+                zpoints_max = np.maximum(zpoints_max, zpoints)
+                
+        return zpoints_max
+        
     
     def initialize_gcode(self):
         # Initialize gcode (used fusion example as template)
-        # ORIGIN MUST BE IN TOP LEFT CORNER OF STOCK WITH Z AT 0
         # G17 -> select xy plane, G21 -> metric units, G90 -> absolute moves
         self.gcode = f'G90 G94\nG17\nG21\nG90\nG54\nG1 Z{self.zsafe} F{self.feed_rate}\n'
     
+    def save_gcode(self, file):
+        path = os.path.join('Projects', self.folder, file)
+        with open(path, 'w') as f:
+            f.write(self.gcode)
+        print(f'Saved "{file}"')
     
-    
-    def get_raster_points(self, stepover, roughing=False):
-        
-        # If roughing, decrease stepover to apply rolling maximum
-        if roughing:
-            stepover = stepover/self.roughing_factor
-        
+    def get_raster_points(self, stepover):
         unique_y = np.arange(0, -self.model['H'], -stepover)
         unique_x = np.arange(0, self.model['W'], stepover)
-        [xpoints, ypoints] = np.meshgrid(unique_x, unique_y)
-            
-        # Apply rolling maximum, downsample back to desired stepover
-        if roughing:
-            zpoints = self.compute_2d_rolling_maximum(zpoints, self.roughing_factor)
-            
-            xpoints = xpoints[::self.roughing_factor, ::self.roughing_factor]
-            ypoints = ypoints[::self.roughing_factor, ::self.roughing_factor]
-            zpoints = zpoints[::self.roughing_factor, ::self.roughing_factor]
+        [xpoints, ypoints] = np.meshgrid(unique_x, unique_y)        
         
-        # Flip even rows so we cut in snake pattern
+        # Flip X values in even rows so we cut in snake pattern
         xpoints[1::2,:] = np.flip( xpoints[1::2,:], axis=1)
-        ypoints[1::2,:] = np.flip( ypoints[1::2,:], axis=1) # Unaffected, done for clarity
-        zpoints[1::2,:] = np.flip( zpoints[1::2,:], axis=1)
         
         # Unravel
         xpoints = xpoints.ravel()
         ypoints = ypoints.ravel()
-        zpoints = zpoints.ravel()
-        return xpoints, ypoints, zpoints
+        return xpoints, ypoints
     
-    
-    def compute_2d_rolling_maximum(self, arr, window):
-        arr_padded = np.pad(arr, window, constant_values = arr.min())
-    
-        # Find maximum of elements in each row
-        byrow = arr_padded
-        for row in range(arr_padded.shape[0]):
-            for _ in range(window):
-                byrow[row,:] = np.maximum(np.roll(arr_padded[row,:], 1), byrow[row,:])
-                byrow[row,:] = np.maximum(np.roll(arr_padded[row,:], -1), byrow[row,:])
-    
-        # Find maximum of elements in each column
-        bycol = arr_padded
-        for col in range(arr_padded.shape[1]):
-            for _ in range(window):
-                bycol[:,col] = np.maximum(np.roll(arr_padded[:,col], 1), bycol[:,col])
-                bycol[:,col] = np.maximum(np.roll(arr_padded[:,col], -1), bycol[:,col])
-    
-        # Convert back to model_zs
-        return np.maximum(byrow, bycol)[window:-window, window:-window]
 
+
+## OLD CODE
+        # self.z_interp = RegularGridInterpolator((range(elev_H), range(elev_W)), self.z_heights)
+        # self.gradient_interp = RegularGridInterpolator((range(elev_H), range(elev_W)), self.gradients)
+        # # Convert points to elevation_indices
+        # elev_H, elev_W = self.elevations.shape
+        # xindices = xpoints / self.model['W'] * (elev_W-1)
+        # yindices = -ypoints / self.model['H'] * (elev_H-1)
