@@ -18,7 +18,7 @@ from gcode_manager import gcode_manager
 # Specify folder and model dimensions
 folder = 'mammoth'
 model = {}
-model['H'] = 150                                                               # CNC y axis
+model['H'] = 150                                                              # CNC y axis
 model['T'] = 50                                                                 # CNC z axis
 
 # Define gcode_manager

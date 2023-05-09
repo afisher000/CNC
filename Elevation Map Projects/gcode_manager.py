@@ -159,15 +159,20 @@ class gcode_manager():
         svg_path = os.path.join('Projects', self.folder, 'contours.svg')
         tree = ET.parse(svg_path)
         root = tree.getroot()
+
+        # Get scale factor
+        height = float(root.get('height').strip('mm'))
+        scale = self.model['H']/height
+
         
         # Find the raster image elements and extract its attributes
         image_elements = root.findall(".//{http://www.w3.org/2000/svg}image")
         for image_element in image_elements:
             if image_element.get('id') == image_id:
-                x = float(image_element.get('x'))
-                y = float(image_element.get('y'))
-                width = float(image_element.get('width'))
-                height = float(image_element.get('height'))
+                x = scale*float(image_element.get('x'))
+                y = scale*float(image_element.get('y'))
+                width = scale*float(image_element.get('width'))
+                height = scale*float(image_element.get('height'))
                 transform = image_element.get('transform')
                 
                 # Correct inversion
@@ -184,25 +189,30 @@ class gcode_manager():
     def generate_image_gcode(self, image_id,
             transition_height=5):
         
-        # Read paths and boundaries from fusion logo
-        paths = self.parse_fusion_gcode(image_id+'.nc')
-        
         # Reads properties of image in contour.svg
         x, y, width, height, transform = self.read_svg_image_properties(image_id)
-        
+
+        # Read paths and boundaries from fusion logo
+        # Scale converts fusion coords to model coords
+        paths, scale = self.parse_fusion_gcode(image_id+'.nc', height)
+        print(scale)
+
         # Loop over paths
         self.initialize_gcode()
         for path in paths:
-            # Get xypoints and depth from fusion path
+            # Get xypoints and depth from fusion path, apply scaling to model coords
             xpoints, ypoints, zdepth = zip(*path)
+            xpoints = np.array(xpoints)*scale
+            ypoints = np.array(ypoints)*scale
+            zdepth = np.array(zdepth)*scale
             
             # Apply inversion correction
             if transform=='scale(-1)':
                 xpoints = width - xpoints
                 ypoints = - height - ypoints
-                
+                            
             # Get elevation interpolation
-            zpoints, gradients = self.interpolate_points(xpoints, ypoints)
+            zpoints, _ = self.interpolate_points(x+xpoints, y+ypoints)
             
             # Add path to gcode, lift for transition
             self.add_path_to_gcode(x + xpoints, y + ypoints, zdepth + zpoints)
@@ -214,12 +224,14 @@ class gcode_manager():
         return
         
     
-    def parse_fusion_gcode(self, file):
-        with open(file, 'r') as f:
+    def parse_fusion_gcode(self, file, height):
+        file_path = os.path.join('Projects', self.folder, file)
+        with open(file_path, 'r') as f:
             lines = f.readlines()
         
         # Initialize position (Z=5 so no cutting by default)
         position = {'X':0, 'Y':0, 'Z':5}
+        ymin, ymax = 1e6, -1e6
         
         # Create list for holding paths
         paths, path = [], []
@@ -242,14 +254,16 @@ class gcode_manager():
             # If z is cutting at a new position, add to path and update bounds
             if position['Z']<0 and is_new_position:
                 path.append([position['X'], position['Y'], position['Z']])
-
+                
+                ymin = position['Y'] if position['Y']<ymin else ymin
+                ymax = position['Y'] if position['Y']>ymax else ymax
                 
             # If z is not cutting, add to paths (if nonempty) and reset path
             elif position['Z']>0:
                 if len(path)>2:
                     paths.append(path)
                 path = []
-        return paths
+        return paths, height/(ymax-ymin)
     
 
         

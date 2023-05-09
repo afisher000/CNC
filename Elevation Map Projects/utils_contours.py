@@ -18,7 +18,9 @@ def get_svg_paths(folder, MODEL):
     root = tree.getroot()
     paths = root.findall('.//{http://www.w3.org/2000/svg}path')  
     
+    # Get scale factor
     height = float(root.get('height').strip('mm'))
+    scale = MODEL['H']/height
     
     # Handler
     def m_command(j, commands):
@@ -81,7 +83,7 @@ def get_svg_paths(folder, MODEL):
             contour.append((curx,cury))
             
         # Save to contours, ensure same dimensions as MODEL
-        contours.append(np.array(contour) * MODEL['H']/height)
+        contours.append(np.array(contour) * scale)
 
         ordered_contours = optimize_contour_order(contours)
     return ordered_contours
