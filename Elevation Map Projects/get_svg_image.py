@@ -28,6 +28,7 @@ for image_element in image_elements:
     width = float(image_element.get('width'))
     height = float(image_element.get('height'))
     transform = image_element.get('transform')
+    
     print(image_element.get('id'))
     
     #

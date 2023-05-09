@@ -10,7 +10,7 @@ import utils_maps as um
 import utils_contours as uc
 from scipy.interpolate import RegularGridInterpolator
 from scipy.ndimage import gaussian_filter
-
+import xml.etree.ElementTree as ET
 
 
 class gcode_manager():
@@ -119,6 +119,9 @@ class gcode_manager():
         self.save_gcode(file)
         return
         
+
+    
+    
     def generate_runs_gcode(self, file,
             max_distance=0.5, transition_height=5, zdepth=-1):
         
@@ -151,46 +154,71 @@ class gcode_manager():
         self.save_gcode(file)
         return
     
-    def generate_name_gcode(self, file, vsize, hpad, vpad, position,
-            transition_height=5, vflip=False, hflip=False):
-        pass
+    def read_svg_image_properties(self, image_id):
+        # Load the SVG file
+        svg_path = os.path.join('Projects', self.folder, 'contours.svg')
+        tree = ET.parse(svg_path)
+        root = tree.getroot()
         
-        return
-    def generate_logo_gcode(self, file,
+        # Find the raster image elements and extract its attributes
+        image_elements = root.findall(".//{http://www.w3.org/2000/svg}image")
+        for image_element in image_elements:
+            if image_element.get('id') == image_id:
+                x = float(image_element.get('x'))
+                y = float(image_element.get('y'))
+                width = float(image_element.get('width'))
+                height = float(image_element.get('height'))
+                transform = image_element.get('transform')
+                
+                # Correct inversion
+                if transform=='scale(-1)': 
+                    x = -1*(x+width)
+                    y = -1*(y+height)
+                    
+                # Change sign on y to match cnc coordinates
+                return x, -y, width, height, transform
+        
+        raise ValueError(f'No image with the id {image_id} in contours.svg')
+    
+    
+    def generate_image_gcode(self, image_id,
             transition_height=5):
         
         # Read paths and boundaries from fusion logo
-        paths = self.parse_fusion_logo_gcode()
+        paths = self.parse_fusion_gcode(image_id+'.nc')
+        
+        # Reads properties of image in contour.svg
+        x, y, width, height, transform = self.read_svg_image_properties(image_id)
         
         # Loop over paths
         self.initialize_gcode()
         for path in paths:
-            
             # Get xypoints and depth from fusion path
             xpoints, ypoints, zdepth = zip(*path)
             
-            # Get elevation interpolation, update with zdepth
+            # Apply inversion correction
+            if transform=='scale(-1)':
+                xpoints = width - xpoints
+                ypoints = - height - ypoints
+                
+            # Get elevation interpolation
             zpoints, gradients = self.interpolate_points(xpoints, ypoints)
-            zpoints += np.array(zdepth)
             
             # Add path to gcode, lift for transition
-            self.add_path_to_gcode(xpoints, ypoints, zpoints)
+            self.add_path_to_gcode(x + xpoints, y + ypoints, zdepth + zpoints)
             self.lift(zpoints[-1]+transition_height)
         
         # Lift to safety and save gcode
         self.lift()
-        self.save_gcode(file)
+        self.save_gcode(image_id + '.txt')
         return
         
     
-    def parse_fusion_logo_gcode(self, file='logo_fusion.nc'):
+    def parse_fusion_gcode(self, file):
         with open(file, 'r') as f:
             lines = f.readlines()
         
-        xmin, ymin = 1e6, 0
-        xmax, ymax = 0, -1e6
-        
-        # Initialize position
+        # Initialize position (Z=5 so no cutting by default)
         position = {'X':0, 'Y':0, 'Z':5}
         
         # Create list for holding paths
@@ -214,18 +242,14 @@ class gcode_manager():
             # If z is cutting at a new position, add to path and update bounds
             if position['Z']<0 and is_new_position:
                 path.append([position['X'], position['Y'], position['Z']])
-                print(position)
-                xmin = position['X'] if position['X']<xmin else xmin
-                xmax = position['X'] if position['X']>xmax else xmax
-                ymin = position['Y'] if position['Y']<ymin else ymin
-                ymax = position['Y'] if position['Y']>ymax else ymax
+
                 
             # If z is not cutting, add to paths (if nonempty) and reset path
             elif position['Z']>0:
                 if len(path)>2:
                     paths.append(path)
                 path = []
-        return paths, xmin, xmax, ymin, ymax
+        return paths
     
 
         
