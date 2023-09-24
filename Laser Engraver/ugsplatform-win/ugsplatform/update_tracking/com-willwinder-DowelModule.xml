@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="UTF-8"?><module codename="com.willwinder.DowelModule">
+    <module_version install_time="1692946380046" last="true" origin="installer" specification_version="2.0.0.2023.08.25.06.49">
+        <file crc="3994088675" name="config/Modules/com-willwinder-DowelModule.xml"/>
+        <file crc="2365723778" name="modules/com-willwinder-DowelModule.jar"/>
+        <file crc="1481966270" name="modules/ext/com.willwinder.DowelModule/org-jetbrains-kotlin/kotlin-stdlib-common.jar"/>
+        <file crc="3705291724" name="modules/ext/com.willwinder.DowelModule/org-jetbrains-kotlin/kotlin-stdlib.jar"/>
+        <file crc="3873279539" name="modules/ext/com.willwinder.DowelModule/org-jetbrains/annotations.jar"/>
+    </module_version>
+</module>

@@ -1,0 +1,16 @@
+# Runs
+1 5 is green
+2 2
+5 2 is single black
+solid is double black, 700mm/min, full power
+solidx3 is chairline
+
+
+
+# Text
+first hershey text
+2.5mm script before conversion
+1000mm/min x2 passes
+
+
+

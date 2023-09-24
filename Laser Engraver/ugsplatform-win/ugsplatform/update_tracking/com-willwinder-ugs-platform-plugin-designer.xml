@@ -1,0 +1,32 @@
+<?xml version="1.0" encoding="UTF-8"?><module codename="com.willwinder.ugs.platform.plugin.designer">
+    <module_version install_time="1692946380358" last="true" origin="installer" specification_version="2.0.0.2023.08.25.06.49">
+        <file crc="400552558" name="config/Modules/com-willwinder-ugs-platform-plugin-designer.xml"/>
+        <file crc="3679642687" name="modules/com-willwinder-ugs-platform-plugin-designer.jar"/>
+        <file crc="83254382" name="modules/ext/com.willwinder.ugs-platform-plugin-designer/com-formdev/jide-oss.jar"/>
+        <file crc="1524862673" name="modules/ext/com.willwinder.ugs-platform-plugin-designer/com-google-code-gson/gson.jar"/>
+        <file crc="2449403980" name="modules/ext/com.willwinder.ugs-platform-plugin-designer/commons-io/commons-io.jar"/>
+        <file crc="3420158953" name="modules/ext/com.willwinder.ugs-platform-plugin-designer/commons-logging/commons-logging.jar"/>
+        <file crc="167814075" name="modules/ext/com.willwinder.ugs-platform-plugin-designer/org-apache-commons/commons-lang3.jar"/>
+        <file crc="2840725542" name="modules/ext/com.willwinder.ugs-platform-plugin-designer/org-apache-xmlgraphics/batik-anim.jar"/>
+        <file crc="2885605393" name="modules/ext/com.willwinder.ugs-platform-plugin-designer/org-apache-xmlgraphics/batik-awt-util.jar"/>
+        <file crc="4214473829" name="modules/ext/com.willwinder.ugs-platform-plugin-designer/org-apache-xmlgraphics/batik-bridge.jar"/>
+        <file crc="3094047381" name="modules/ext/com.willwinder.ugs-platform-plugin-designer/org-apache-xmlgraphics/batik-constants.jar"/>
+        <file crc="456557311" name="modules/ext/com.willwinder.ugs-platform-plugin-designer/org-apache-xmlgraphics/batik-css.jar"/>
+        <file crc="1243052749" name="modules/ext/com.willwinder.ugs-platform-plugin-designer/org-apache-xmlgraphics/batik-dom.jar"/>
+        <file crc="2293115543" name="modules/ext/com.willwinder.ugs-platform-plugin-designer/org-apache-xmlgraphics/batik-ext.jar"/>
+        <file crc="503630768" name="modules/ext/com.willwinder.ugs-platform-plugin-designer/org-apache-xmlgraphics/batik-gui-util.jar"/>
+        <file crc="2046340477" name="modules/ext/com.willwinder.ugs-platform-plugin-designer/org-apache-xmlgraphics/batik-gvt.jar"/>
+        <file crc="2597429979" name="modules/ext/com.willwinder.ugs-platform-plugin-designer/org-apache-xmlgraphics/batik-i18n.jar"/>
+        <file crc="2439577865" name="modules/ext/com.willwinder.ugs-platform-plugin-designer/org-apache-xmlgraphics/batik-parser.jar"/>
+        <file crc="518627946" name="modules/ext/com.willwinder.ugs-platform-plugin-designer/org-apache-xmlgraphics/batik-script.jar"/>
+        <file crc="2002465345" name="modules/ext/com.willwinder.ugs-platform-plugin-designer/org-apache-xmlgraphics/batik-shared-resources.jar"/>
+        <file crc="1235317379" name="modules/ext/com.willwinder.ugs-platform-plugin-designer/org-apache-xmlgraphics/batik-svg-dom.jar"/>
+        <file crc="835760730" name="modules/ext/com.willwinder.ugs-platform-plugin-designer/org-apache-xmlgraphics/batik-swing.jar"/>
+        <file crc="2734804622" name="modules/ext/com.willwinder.ugs-platform-plugin-designer/org-apache-xmlgraphics/batik-util.jar"/>
+        <file crc="1939736236" name="modules/ext/com.willwinder.ugs-platform-plugin-designer/org-apache-xmlgraphics/batik-xml.jar"/>
+        <file crc="1802009705" name="modules/ext/com.willwinder.ugs-platform-plugin-designer/org-apache-xmlgraphics/xmlgraphics-commons.jar"/>
+        <file crc="537139198" name="modules/ext/com.willwinder.ugs-platform-plugin-designer/org-locationtech-jts/jts-core.jar"/>
+        <file crc="2268634152" name="modules/ext/com.willwinder.ugs-platform-plugin-designer/xml-apis/xml-apis-ext.jar"/>
+        <file crc="3203011316" name="modules/ext/com.willwinder.ugs-platform-plugin-designer/xml-apis/xml-apis.jar"/>
+    </module_version>
+</module>
