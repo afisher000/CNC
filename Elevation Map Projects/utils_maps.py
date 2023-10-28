@@ -1,3 +1,4 @@
+
 # %%
 import os
 from pprint import pprint
@@ -124,7 +125,7 @@ def estimate_map_size(sw, ne, MAX_SIZE=None, zoom=None):
 
 
 def download_tile(sw, ne, zoom, WATERMARK_PIXELS):
-    API_KEY = os.environ['MAPS_API_KEY']
+    API_KEY = os.environ['GOOGLE_API_KEY']
     
     # Determine size of map to download. Then add extra WATERMARK_PIXELS.
     _, (tile_height, tile_width) = estimate_map_size(sw, ne, zoom=zoom)

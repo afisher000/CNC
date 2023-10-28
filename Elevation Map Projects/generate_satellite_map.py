@@ -7,7 +7,7 @@ import os
 
 
 
-folder = 'mammoth'
+folder = 'altasnowbird'
 sw, ne = um.get_GPS_coords(folder)
 
 
@@ -68,3 +68,5 @@ cv.imwrite(map_path, resized_img)
 
 
 
+
+# %%
