@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="UTF-8"?><module codename="com.willwinder.ugs.platform.surfacescanner">
+    <module_version install_time="1709882948635" last="true" origin="installer" specification_version="2.0.0.2024.03.08.07.26">
+        <file crc="2897421025" name="config/Modules/com-willwinder-ugs-platform-surfacescanner.xml"/>
+        <file crc="2463322965" name="modules/com-willwinder-ugs-platform-surfacescanner.jar"/>
+        <file crc="3542709268" name="modules/ext/com.willwinder.ugs-platform-surfacescanner/com-google-code-gson/gson.jar"/>
+    </module_version>
+</module>

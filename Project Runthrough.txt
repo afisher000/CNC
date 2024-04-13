@@ -1,0 +1,24 @@
+Outline of project
+General settings:
+	Common dash settings:
+		blacks and chairlifts = solid
+		blue = 10 10 dashed
+		green = 5 15 dashed
+		park = 2 10 dashed
+	Laser height: 75-80mm for minimum spotsize
+	Text: 2mm height is limit. 3mm height is easy.
+
+1) Choose ne, sw gps coordinates from google maps. Add to "GPS coordinates.csv"
+2) Main interface is "generate_project_gcodes_2024.py". Utilities are stored in appropriate utils_##.py functions.
+
+3) Using generate_project_gcodes_####.py: Set model dimensions and rotation, create satellite map
+4) Created a master svg file in inkscape:
+	Set dimensions to same as model. Change units to mm and scale to 1 in document properties. 
+	Import satellelite map. 
+	Trace lines pen tool.
+	Add mountain logo, signature, and text.
+
+5) Generating gcodes with generate_project_gcodes_2024.py.
+	Change roughing/smoothing properties as desired.
+	Will generate gcode for paths, not images and text
+	Images and text can be imported into lasergrbl individually. Then converted to gcode with heights.

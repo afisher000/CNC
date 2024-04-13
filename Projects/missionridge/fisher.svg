@@ -1,0 +1,57 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<!-- Created with Inkscape (http://www.inkscape.org/) -->
+
+<svg
+   width="40mm"
+   height="20mm"
+   viewBox="0 0 40 20"
+   version="1.1"
+   id="svg11323"
+   inkscape:version="1.2.2 (732a01da63, 2022-12-09)"
+   sodipodi:docname="signature.svg"
+   inkscape:export-filename="signature.png"
+   inkscape:export-xdpi="96"
+   inkscape:export-ydpi="96"
+   xmlns:inkscape="http://www.inkscape.org/namespaces/inkscape"
+   xmlns:sodipodi="http://sodipodi.sourceforge.net/DTD/sodipodi-0.dtd"
+   xmlns="http://www.w3.org/2000/svg"
+   xmlns:svg="http://www.w3.org/2000/svg">
+  <sodipodi:namedview
+     id="namedview11325"
+     pagecolor="#ffffff"
+     bordercolor="#000000"
+     borderopacity="0.25"
+     inkscape:showpageshadow="2"
+     inkscape:pageopacity="0.0"
+     inkscape:pagecheckerboard="0"
+     inkscape:deskcolor="#d1d1d1"
+     inkscape:document-units="mm"
+     showgrid="false"
+     inkscape:zoom="6.0863075"
+     inkscape:cx="59.642074"
+     inkscape:cy="44.854783"
+     inkscape:window-width="1920"
+     inkscape:window-height="1009"
+     inkscape:window-x="2"
+     inkscape:window-y="1203"
+     inkscape:window-maximized="1"
+     inkscape:current-layer="layer1" />
+  <defs
+     id="defs11320" />
+  <g
+     inkscape:label="Layer 1"
+     inkscape:groupmode="layer"
+     id="layer1">
+    <text
+       xml:space="preserve"
+       style="font-size:13.4606px;font-family:'Segoe Print';-inkscape-font-specification:'Segoe Print, Normal';text-align:center;direction:rtl;text-orientation:sideways;text-anchor:middle;fill:#ff0000;stroke:#ff0000;stroke-width:0.538423;stroke-linecap:round;font-weight:normal;font-style:normal;font-stretch:normal;font-variant:normal;font-variant-ligatures:normal;font-variant-caps:normal;font-variant-numeric:normal;font-variant-east-asian:normal;fill-opacity:1"
+       x="19.316454"
+       y="19.553329"
+       id="text11865"><tspan
+         sodipodi:role="line"
+         id="tspan11863"
+         style="stroke-width:0.538423;-inkscape-font-specification:'Segoe Print, Normal';font-family:'Segoe Print';font-weight:normal;font-style:normal;font-stretch:normal;font-variant:normal;font-size:13.46060038px;font-variant-ligatures:normal;font-variant-caps:normal;font-variant-numeric:normal;font-variant-east-asian:normal;fill:#ff0000;fill-opacity:1"
+         x="19.316454"
+         y="19.553329">Fisher</tspan></text>
+  </g>
+</svg>

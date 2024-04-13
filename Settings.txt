@@ -1,0 +1,7 @@
+Blacks - solid line
+Blue - 10 10 dashed
+Green - 5 15 dashed
+Park - 2 10 dashed
+
+Engraving:
+4 lines/mm in rasters.
